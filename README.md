@@ -205,6 +205,24 @@ Signing needs the Xcode command line tools (`xcode-select --install`). The app i
 `packaging/macos/AppIcon.icns`, is rendered from `packaging/landingcraft.svg` by
 `packaging/macos/make-icon.swift`. Rerun that script if the SVG changes.
 
+### Publishing a release
+
+`release.sh` uploads built files to the GitHub release for the version in `Cargo.toml` (tag
+`v<version>`). Each platform builds and uploads its own files from its own machine, at the same pushed
+commit. The release stays a draft, visible only to you, until `--publish` creates the tag and makes it
+public:
+
+```bash
+gh auth login                                              # once per machine
+packaging/macos/package.sh --sign "…" --notarize PROFILE   # on the Mac
+./release.sh target/macos/landingcraft-0.1.0-macos-universal.dmg
+./release.sh --publish                                     # after every platform has uploaded
+```
+
+It refuses uncommitted or unpushed code, files not named for the current version, a disk image that
+isn't notarized, and a version that's already been published. Bump `version` in `Cargo.toml` for each
+new release.
+
 **Windows** isn't supported yet. The code compiles for Windows, so it doesn't stand in the way, but the
 launcher can't install apps there or open links and folders.
 
