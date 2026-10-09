@@ -2,6 +2,7 @@
 //! `LANDINGCRAFT_SCREENSHOT=<file.png>` set, the launcher saves an image of its
 //! own window after `LANDINGCRAFT_SCREENSHOT_DELAY` seconds (default 4) and quits.
 //! `LANDINGCRAFT_SCREENSHOT_HEIGHT` opens a taller window, to capture more of a page.
+//! `LANDINGCRAFT_DEMO=<action>:<arg>` (see `Launcher::demo_action`) sets up a state to capture.
 
 pub fn window_height() -> Option<f32> {
     std::env::var("LANDINGCRAFT_SCREENSHOT_HEIGHT").ok().and_then(|h| h.parse().ok())

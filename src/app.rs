@@ -120,6 +120,9 @@ pub struct Launcher {
     /// Whether this window has the launcher's own title bar (fixed at startup).
     custom_frame: bool,
     handoff: titlebar::Handoff,
+    /// Screenshot builds: open this app's More menu on the app page.
+    #[cfg(feature = "screenshot")]
+    demo_menu: Option<usize>,
 }
 
 /// Sends events from worker threads and wakes the UI.
@@ -169,6 +172,8 @@ impl Launcher {
         let mut launcher = Self {
             custom_frame: !settings.native_title_bar,
             handoff: titlebar::Handoff::default(),
+            #[cfg(feature = "screenshot")]
+            demo_menu: None,
             path_edit: APPS
                 .iter()
                 .map(|a| settings.custom_paths.get(a.id).cloned().unwrap_or_default())
@@ -227,6 +232,7 @@ impl Launcher {
         match (action, idx) {
             ("install", Some(i)) => self.install(i),
             ("uninstall", Some(i)) => self.dialog = Some(Dialog::Uninstall(i)),
+            ("menu", Some(i)) => self.demo_menu = Some(i),
             ("move", _) => self.request_install_dir(PathBuf::from(arg)),
             _ => eprintln!("unknown LANDINGCRAFT_DEMO {spec:?}"),
         }

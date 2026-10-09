@@ -181,6 +181,10 @@ impl Launcher {
     /// The More (three dots) button and its menu.
     pub(super) fn more_menu(&mut self, ui: &mut Ui, idx: usize, large: bool) {
         let resp = theme::dots_button(ui, large).on_hover_text("More actions");
+        #[cfg(feature = "screenshot")]
+        if large && self.demo_menu == Some(idx) {
+            egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&resp));
+        }
         let app = &APPS[idx];
         let managed = self.managed[idx].is_some();
         let installed = self.is_installed(idx);
