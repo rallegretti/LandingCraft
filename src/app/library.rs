@@ -303,7 +303,7 @@ impl Launcher {
         let footer = Rect::from_min_max(pos2(inner.left(), inner.bottom() - 32.0), inner.max);
         {
             let ui = &mut ui.new_child(UiBuilder::new().max_rect(footer).layout(Layout::left_to_right(Align::Center)));
-            if let Some((label, fraction)) = self.job_label(idx) {
+            if let Some((label, fraction)) = self.job_label(idx, true) {
                 let w = (footer.width() - 80.0).max(80.0);
                 progress_bar(ui, w, fraction, &label, theme::tint(app.accent));
             } else {

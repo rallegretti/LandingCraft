@@ -86,7 +86,14 @@ pub fn progress_bar(ui: &mut Ui, width: f32, fraction: Option<f32>, label: &str,
     if fill_w > 0.0 {
         p.rect_filled(Rect::from_min_size(track.min, vec2(fill_w, track.height())), CornerRadius::same(3), accent);
     }
-    theme::text_at(ui, egui::pos2(rect.left(), rect.top() + 9.0), Align2::LEFT_CENTER, label, theme::mono(11.0), theme::TEXT_DIM);
+    // Clip to the bar so a long label can never run into neighbouring buttons.
+    ui.painter().with_clip_rect(rect).text(
+        egui::pos2(rect.left(), rect.top() + 9.0),
+        Align2::LEFT_CENTER,
+        label,
+        theme::mono(11.0),
+        theme::TEXT_DIM,
+    );
 }
 
 /// Something chosen from an app's More menu, applied after the menu closes.
@@ -101,12 +108,17 @@ enum MenuAction {
 }
 
 impl Launcher {
-    pub(super) fn job_label(&self, idx: usize) -> Option<(String, Option<f32>)> {
+    /// Progress text and fraction for a running job. `compact` (cards) keeps the
+    /// text short enough to sit beside the Cancel button.
+    pub(super) fn job_label(&self, idx: usize, compact: bool) -> Option<(String, Option<f32>)> {
         let job = self.jobs[idx].as_ref()?;
         if job.cancel.load(std::sync::atomic::Ordering::Relaxed) {
             return Some(("Cancelling…".to_owned(), None));
         }
         let label = match job.stage {
+            crate::installer::Stage::Downloading if compact => {
+                format!("Downloading · {:.0}%", job.fraction() * 100.0)
+            }
             crate::installer::Stage::Downloading => format!(
                 "Downloading v{} · {} of {}",
                 job.version,

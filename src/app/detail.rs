@@ -68,7 +68,7 @@ impl Launcher {
         ui.add_space(20.0);
 
         ui.horizontal(|ui| {
-            if let Some((label, fraction)) = self.job_label(idx) {
+            if let Some((label, fraction)) = self.job_label(idx, false) {
                 progress_bar(ui, 320.0, fraction, &label, theme::tint(app.accent));
                 ui.add_space(8.0);
             }
