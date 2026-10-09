@@ -5,6 +5,8 @@ mod catalog;
 mod detect;
 mod gpu;
 mod links;
+mod releases;
+mod settings;
 mod theme;
 
 use eframe::egui;

@@ -14,7 +14,15 @@ wgpu = { version = "30", default-features = false, features = ["std", "parking_l
 image = { version = "0.25", default-features = false, features = ["webp"] }
 # Pure-Rust D-Bus, used to ask the desktop portal to open web links.
 zbus = "5"
+# HTTPS for GitHub releases: rustls with the pure-Rust RustCrypto provider (no
+# ring/aws-lc C or assembly), trusting the system's CA certificates.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider"] }
+rustls-rustcrypto = "0.0.2-alpha"
+rustls-native-certs = "0.8"
+# Release handling: version ordering.
+semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 lto = "thin"
