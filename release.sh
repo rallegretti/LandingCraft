@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Upload built files to LandingCraft's GitHub release for the version in Cargo.toml (tag v<version>).
 #
-#   ./release.sh FILE...             upload to the draft release, creating the draft if needed
-#   ./release.sh --publish           publish the draft once every platform has uploaded
+#   ./release.sh FILE...             upload to the release, creating it as a draft if needed
+#   ./release.sh --publish           publish the draft, creating the tag and making it public
 #   ./release.sh --publish FILE...   upload, then publish
 #
-# Each platform builds and uploads its own files from its own machine, at the same commit. The release
-# stays a draft, visible only to you, until --publish creates the tag and makes it public.
+# Each platform builds and uploads its own files from its own machine, at the same commit: the commit
+# a draft is pinned to, or once published, the tagged one (git checkout v<version>). Platforms can be
+# added after publishing, but a published file is never replaced; that needs a new version.
 # Needs the GitHub CLI, signed in once with: gh auth login
 set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/scripts/common.sh"
@@ -16,7 +17,7 @@ FILES=()
 for arg in "$@"; do
     case "$arg" in
         --publish) PUBLISH=1 ;;
-        -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)        die "unknown option: $arg (see --help)" ;;
         *)         FILES+=("$arg") ;;
     esac
@@ -52,14 +53,24 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
     fi
 done
 
+upload=(--clobber)
 if state="$("$GH" release view "$TAG" --json isDraft,targetCommitish --jq '"\(.isDraft) \(.targetCommitish)"' 2>/dev/null)"; then
     read -r draft target <<<"$state"
-    if [[ "$draft" != true && ${#FILES[@]} -gt 0 ]]; then
-        die "$TAG is already published. Bump the version in Cargo.toml for a new release."
-    fi
-    # Drafts record the commit they'll tag; every platform's files must come from it.
-    if [[ "$draft" == true && "$target" != "$SHA" ]]; then
-        die "the $TAG draft is for commit ${target:0:12}, but this checkout is at ${SHA:0:12}. Check out that commit and rebuild."
+    if [[ "$draft" == true ]]; then
+        # Drafts record the commit they'll tag; every platform's files must come from it.
+        [[ "$target" == "$SHA" ]] \
+            || die "the $TAG draft is for commit ${target:0:12}, but this checkout is at ${SHA:0:12}. Check out that commit and rebuild."
+    elif [[ ${#FILES[@]} -gt 0 ]]; then
+        tagged="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")" || die "couldn't find the $TAG tag"
+        [[ "$tagged" == "$SHA" ]] \
+            || die "$TAG was released from commit ${tagged:0:12}, but this checkout is at ${SHA:0:12}. Build from it with: git checkout $TAG (or bump the version for a new release)."
+        # People may already have downloaded what's published, so it's never swapped out.
+        published="$("$GH" release view "$TAG" --json assets --jq '.assets[].name')"
+        for f in "${FILES[@]}"; do
+            ! grep -qxF "$(basename "$f")" <<<"$published" \
+                || die "$(basename "$f") is already in the published $TAG; bump the version to change it."
+        done
+        upload=()
     fi
 elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     die "tag $TAG already exists without a release. Bump the version in Cargo.toml."
@@ -70,7 +81,7 @@ fi
 
 if [[ ${#FILES[@]} -gt 0 ]]; then
     info "Uploading ${#FILES[@]} file(s) to $TAG"
-    "$GH" release upload "$TAG" "${FILES[@]}" --clobber
+    "$GH" release upload "$TAG" "${FILES[@]}" ${upload[@]+"${upload[@]}"}
 fi
 
 if [[ "$PUBLISH" == 1 ]]; then

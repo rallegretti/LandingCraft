@@ -216,12 +216,13 @@ public:
 gh auth login                                              # once per machine
 packaging/macos/package.sh --sign "…" --notarize PROFILE   # on the Mac
 ./release.sh target/macos/landingcraft-0.1.0-macos-universal.dmg
-./release.sh --publish                                     # after every platform has uploaded
+./release.sh --publish                                     # when you are ready to go public
 ```
 
-It refuses uncommitted or unpushed code, files not named for the current version, a disk image that
-isn't notarized, and a version that's already been published. Bump `version` in `Cargo.toml` for each
-new release.
+A platform can also be added after publishing: check out the release's tag (`git checkout v0.1.0`),
+build, and upload as usual. The script refuses uncommitted or unpushed code, a commit other than the
+release's, files not named for the current version, a disk image that isn't notarized, and replacing a
+file that's already published. Bump `version` in `Cargo.toml` for each new release.
 
 **Windows** isn't supported yet. The code compiles for Windows, so it doesn't stand in the way, but the
 launcher can't install apps there or open links and folders.
