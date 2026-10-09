@@ -5,6 +5,7 @@ mod catalog;
 mod detect;
 mod gpu;
 mod links;
+mod installer;
 mod releases;
 mod settings;
 mod theme;

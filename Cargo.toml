@@ -19,8 +19,11 @@ zbus = "5"
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider"] }
 rustls-rustcrypto = "0.0.2-alpha"
 rustls-native-certs = "0.8"
-# Release handling: version ordering.
+# Release handling: version ordering, checksums, and unpacking .tar.gz (miniz_oxide).
 semver = { version = "1", features = ["serde"] }
+sha2 = "0.10"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
