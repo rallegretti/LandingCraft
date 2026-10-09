@@ -42,6 +42,9 @@ pub struct Settings {
     /// Package format used for new installs and updates.
     pub format: Format,
     pub check_on_startup: bool,
+    /// Let the desktop draw the title bar instead of the launcher. Only useful
+    /// where the desktop draws title bars for apps; read once at startup.
+    pub native_title_bar: bool,
     /// User-provided executable per app id, used when the launcher doesn't manage the app.
     pub custom_paths: HashMap<String, String>,
 }
@@ -52,6 +55,7 @@ impl Default for Settings {
             install_dir: default_install_dir(),
             format: Format::default(),
             check_on_startup: true,
+            native_title_bar: false,
             custom_paths: HashMap::new(),
         }
     }

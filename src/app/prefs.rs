@@ -26,6 +26,7 @@ impl Launcher {
         section(ui, "Installations", |ui| self.installations(ui));
         section(ui, "Package format", |ui| self.format_choice(ui));
         section(ui, "Updates", |ui| self.update_prefs(ui));
+        section(ui, "Window", |ui| self.window_prefs(ui));
         section(ui, "Graphics", |ui| self.graphics(ui));
         section(ui, "About", |ui| {
             dim(
@@ -173,6 +174,27 @@ impl Launcher {
             .collect();
         for e in errors.iter().take(3) {
             ui.label(RichText::new(e).font(theme::body(12.5)).color(theme::TEXT_FAINT));
+        }
+    }
+
+    fn window_prefs(&mut self, ui: &mut Ui) {
+        let mut native = self.settings.native_title_bar;
+        if ui.checkbox(&mut native, "Use the desktop's title bar").changed() {
+            self.settings.native_title_bar = native;
+            self.save_settings();
+        }
+        dim(
+            ui,
+            "By default the launcher draws its own title bar, so it looks the same everywhere. Turn this on to \
+             use your desktop's instead. Only do this if your desktop draws title bars for apps: KDE Plasma, \
+             Xfce and most X11 window managers do, GNOME on Wayland doesn't.",
+        );
+        if native != !self.custom_frame {
+            ui.label(
+                RichText::new("Takes effect the next time LandingCraft starts.")
+                    .font(theme::body(12.5))
+                    .color(theme::TEXT_FAINT),
+            );
         }
     }
 

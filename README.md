@@ -73,6 +73,15 @@ Launcher settings live in `~/.config/landingcraft/settings.json`, and the releas
 `~/.cache/landingcraft/releases.json`. Updates are checked at startup and every six hours, and the
 automatic checks can be turned off.
 
+## Window
+
+The launcher draws its own title bar, with drag-to-move, double-click to maximise, minimise/maximise/close,
+and resizing from the edges and corners. That way it looks the same on every desktop. This matters on
+Wayland, where GNOME and some other compositors don't draw title bars for apps, and winit's built-in
+title bars would mean running helper programs (`dbus-send`, `gsettings`, `fc-match`). On a desktop that
+does draw title bars, such as KDE Plasma, Xfce or most X11 window managers, **Settings → Window → Use the
+desktop's title bar** switches to the native one from the next start.
+
 ## Graphics
 
 Rendering goes through `wgpu` with **only the Vulkan backend** compiled in. Adapter choice ignores vendor
@@ -91,7 +100,7 @@ LANDINGCRAFT_GPU=radv cargo run --release
 | --- | --- |
 | `src/catalog.rs` | App data: names, summaries, highlights, accents, versions |
 | `src/app.rs` | Launcher state and actions (install, update, uninstall, move) |
-| `src/app/` | Pages and dialogs: library, app detail, settings, shared widgets |
+| `src/app/` | Pages and dialogs: library, app detail, settings, title bar, shared widgets |
 | `src/releases.rs` | GitHub release lookup over HTTPS, stable filtering, asset choice |
 | `src/installer.rs` | Download, verify, unpack, swap in, uninstall, move installs |
 | `src/settings.rs` | Install folder, package format and other persisted settings |

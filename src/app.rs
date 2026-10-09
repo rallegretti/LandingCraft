@@ -4,6 +4,7 @@ mod detail;
 mod dialogs;
 mod library;
 mod prefs;
+mod titlebar;
 mod widgets;
 
 use std::collections::HashMap;
@@ -116,6 +117,8 @@ pub struct Launcher {
     events: (Sender<Event>, Receiver<Event>),
     ctx: egui::Context,
     gpu: Option<GpuInfo>,
+    /// Whether this window has the launcher's own title bar (fixed at startup).
+    custom_frame: bool,
 }
 
 /// Sends events from worker threads and wakes the UI.
@@ -163,6 +166,7 @@ impl Launcher {
         let cache = releases::load_cache();
         let n = APPS.len();
         let mut launcher = Self {
+            custom_frame: !settings.native_title_bar,
             path_edit: APPS
                 .iter()
                 .map(|a| settings.custom_paths.get(a.id).cloned().unwrap_or_default())
@@ -664,6 +668,14 @@ impl eframe::App for Launcher {
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        if self.custom_frame {
+            egui::Panel::top("titlebar")
+                .exact_size(titlebar::HEIGHT)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(egui::Frame::new().fill(theme::SIDEBAR))
+                .show(ui, |ui| self.title_bar(ui));
+        }
         egui::Panel::left("sidebar")
             .exact_size(240.0)
             .resizable(false)
@@ -700,6 +712,9 @@ impl eframe::App for Launcher {
                     });
             });
 
+        if self.custom_frame {
+            self.window_edges(ui);
+        }
         let ctx = ui.ctx().clone();
         self.dialogs(&ctx);
         self.show_toasts(&ctx);
