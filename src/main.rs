@@ -7,6 +7,8 @@ mod gpu;
 mod installer;
 mod portal;
 mod releases;
+#[cfg(feature = "screenshot")]
+mod screenshot;
 mod settings;
 mod theme;
 
@@ -25,6 +27,11 @@ fn main() -> eframe::Result {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: gpu::configuration(),
         ..Default::default()
+    };
+    #[cfg(feature = "screenshot")]
+    let options = match screenshot::window_height() {
+        Some(h) => eframe::NativeOptions { viewport: options.viewport.with_inner_size([1240.0, h]), ..options },
+        None => options,
     };
 
     eframe::run_native(

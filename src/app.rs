@@ -206,7 +206,24 @@ impl Launcher {
         if launcher.settings.check_on_startup && stale {
             launcher.check_updates();
         }
+        #[cfg(feature = "screenshot")]
+        launcher.demo_action();
         launcher
+    }
+
+    /// Screenshot builds only: `LANDINGCRAFT_DEMO=<action>:<app id or path>` runs
+    /// one action at startup so its UI can be captured without clicking.
+    #[cfg(feature = "screenshot")]
+    fn demo_action(&mut self) {
+        let Ok(spec) = std::env::var("LANDINGCRAFT_DEMO") else { return };
+        let (action, arg) = spec.split_once(':').unwrap_or((spec.as_str(), ""));
+        let idx = APPS.iter().position(|a| a.id == arg);
+        match (action, idx) {
+            ("install", Some(i)) => self.install(i),
+            ("uninstall", Some(i)) => self.dialog = Some(Dialog::Uninstall(i)),
+            ("move", _) => self.request_install_dir(PathBuf::from(arg)),
+            _ => eprintln!("unknown LANDINGCRAFT_DEMO {spec:?}"),
+        }
     }
 
     fn notify(&self) -> Notify {
@@ -686,6 +703,8 @@ impl eframe::App for Launcher {
         let ctx = ui.ctx().clone();
         self.dialogs(&ctx);
         self.show_toasts(&ctx);
+        #[cfg(feature = "screenshot")]
+        crate::screenshot::tick(&ctx);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
