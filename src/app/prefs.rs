@@ -61,6 +61,9 @@ impl Launcher {
             "Every app the launcher installs lives in its own folder here. Changing the location moves \
              installed apps along with it.",
         );
+        if cfg!(windows) {
+            dim(ui, "Apps installed from their MSI are the exception: Windows keeps them in Program Files.");
+        }
         ui.add_space(8.0);
         kv(ui, "Location", &settings::display_path(self.base()));
         kv(
@@ -120,12 +123,6 @@ impl Launcher {
                      sight, copies the app inside into its own folder with its signature intact, and closes the \
                      image again.",
                 ),
-                Some(Format::Zip) => dim(
-                    ui,
-                    "Crafting Apps for Windows are published as portable zip files. The launcher unpacks each one \
-                     into its own folder, and the apps keep their settings in your user profile, so updates and \
-                     moves never touch them.",
-                ),
                 _ => dim(ui, format!("The launcher can't install Crafting Apps on {} yet.", releases::platform())),
             }
             return;
@@ -145,7 +142,18 @@ impl Launcher {
                 ui,
                 "Each app is unpacked into its own folder. Starts fastest and needs nothing else on the system.",
             ),
-            Format::Dmg | Format::Zip => {}
+            Format::Dmg => {}
+            Format::Msi => dim(
+                ui,
+                "Each app's own Windows installer puts it in Program Files, as if you ran it yourself: with Start \
+                 menu and desktop shortcuts, listed in Settings › Apps. Windows asks for permission for every \
+                 install, update and uninstall.",
+            ),
+            Format::Zip => dim(
+                ui,
+                "Each app is unpacked into its own folder in the location above, without asking for permission. \
+                 Nothing is added to the Start menu: open the apps from the launcher. Settings stay in your profile.",
+            ),
             Format::AppImage => {
                 dim(ui, "Each app is kept as a single self-contained .AppImage file.");
                 #[cfg(all(unix, not(target_os = "macos")))]

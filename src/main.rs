@@ -11,6 +11,8 @@ mod gpu;
 mod installer;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(windows)]
+mod msi;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod portal;
 mod releases;

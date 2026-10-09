@@ -5,6 +5,10 @@
 //! Paths in the manifest are relative to the app folder, so the whole install
 //! folder can be moved.
 //!
+//! On Windows an app can be installed from its MSI instead. Windows Installer
+//! puts it in Program Files, so the launcher keeps its manifest in its own
+//! settings folder rather than the install folder, and it doesn't move.
+//!
 //! Every temporary entry the installer creates starts with `.lc-`, so leftovers
 //! from an interrupted install can be recognised and removed safely.
 
@@ -37,18 +41,68 @@ pub struct Manifest {
     pub asset: String,
     pub sha256: String,
     pub installed: u64,
+    /// Set when Windows Installer installed the app from its MSI. `exe` is then
+    /// an absolute path, and `payload` is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub msi: Option<MsiProduct>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct MsiProduct {
+    pub product_code: String,
+    pub upgrade_code: String,
 }
 
 impl Manifest {
     pub fn exe_path(&self, base: &Path) -> PathBuf {
-        base.join(&self.id).join(&self.exe)
+        match self.msi {
+            Some(_) => PathBuf::from(&self.exe),
+            None => base.join(&self.id).join(&self.exe),
+        }
+    }
+
+    /// The folder holding the app: its folder in the install folder, or where
+    /// Windows Installer put it.
+    pub fn folder(&self, base: &Path) -> PathBuf {
+        match self.msi {
+            Some(_) => Path::new(&self.exe).parent().map(Path::to_path_buf).unwrap_or_default(),
+            None => base.join(&self.id),
+        }
     }
 }
 
+/// The manifest of an app installed in the install folder.
 pub fn read_manifest(base: &Path, id: &str) -> Option<Manifest> {
     let bytes = fs::read(base.join(id).join(MANIFEST)).ok()?;
     let m: Manifest = serde_json::from_slice(&bytes).ok()?;
-    (m.id == id && is_plain_relative(Path::new(&m.exe)) && is_single_name(&m.payload)).then_some(m)
+    (m.id == id && m.msi.is_none() && is_plain_relative(Path::new(&m.exe)) && is_single_name(&m.payload)).then_some(m)
+}
+
+/// The launcher's installation of an app, wherever it is: in the install
+/// folder, or on Windows, installed from its MSI.
+pub fn installed(base: &Path, id: &str) -> Option<Manifest> {
+    read_manifest(base, id).or_else(|| read_msi_manifest(id))
+}
+
+/// Where the manifest of an app installed from its MSI is kept.
+#[cfg(windows)]
+fn msi_manifest_path(id: &str) -> PathBuf {
+    crate::settings::config_dir().join("msi").join(format!("{id}.json"))
+}
+
+/// The manifest of an app installed from its MSI, as long as Windows still has
+/// it: one removed in Settings › Apps no longer counts.
+#[cfg(windows)]
+fn read_msi_manifest(id: &str) -> Option<Manifest> {
+    let m: Manifest = serde_json::from_slice(&fs::read(msi_manifest_path(id)).ok()?).ok()?;
+    let product = m.msi.as_ref()?;
+    (m.id == id && m.format == Format::Msi && Path::new(&m.exe).is_absolute() && crate::msi::is_installed(&product.product_code))
+        .then_some(m)
+}
+
+#[cfg(not(windows))]
+fn read_msi_manifest(_id: &str) -> Option<Manifest> {
+    None
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -56,6 +110,11 @@ pub enum Stage {
     Downloading,
     Verifying,
     Unpacking,
+    /// Waiting for Windows Installer to finish another installation.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Waiting,
+    /// Windows Installer is installing an MSI.
+    Installing,
     Finishing,
 }
 
@@ -65,8 +124,23 @@ impl Stage {
             Stage::Downloading => "Downloading",
             Stage::Verifying => "Verifying",
             Stage::Unpacking => "Unpacking",
+            Stage::Waiting => "Waiting for another install",
+            Stage::Installing => "Installing",
             Stage::Finishing => "Finishing",
         }
+    }
+}
+
+/// Where a new install ended up.
+struct Placed {
+    payload: String,
+    exe: String,
+    msi: Option<MsiProduct>,
+}
+
+impl From<(String, String)> for Placed {
+    fn from((payload, exe): (String, String)) -> Self {
+        Placed { payload, exe, msi: None }
     }
 }
 
@@ -86,7 +160,7 @@ pub fn install(
     let expected = expected_sha256(release, asset)?;
     let dir = base.join(id);
     fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {}: {e}", dir.display()))?;
-    let previous = read_manifest(base, id);
+    let previous = installed(base, id);
 
     let part = dir.join(format!("{TMP}download.part"));
     let result = (|| {
@@ -95,27 +169,28 @@ pub fn install(
         if actual != expected {
             return Err(format!("download of {} is corrupt (checksum mismatch)", asset.name));
         }
-        match format {
-            Format::Tarball => place_archive(&dir, id, &part, format, cancel, progress),
-            Format::AppImage => place_appimage(&dir, &asset.name, &part),
+        let placed: Placed = match format {
+            Format::Tarball => place_archive(&dir, id, &part, format, cancel, progress)?.into(),
+            Format::AppImage => place_appimage(&dir, &asset.name, &part)?.into(),
             #[cfg(target_os = "macos")]
-            Format::Dmg => place_dmg(&dir, id, &part, cancel, progress),
+            Format::Dmg => place_dmg(&dir, id, &part, cancel, progress)?.into(),
             #[cfg(not(target_os = "macos"))]
-            Format::Dmg => Err("disk images can only be installed on macOS".to_owned()),
+            Format::Dmg => return Err("disk images can only be installed on macOS".to_owned()),
             #[cfg(windows)]
-            Format::Zip => place_archive(&dir, id, &part, format, cancel, progress),
+            Format::Zip => place_archive(&dir, id, &part, format, cancel, progress)?.into(),
+            #[cfg(windows)]
+            Format::Msi => place_msi(&dir, id, &part, cancel, progress)?,
             #[cfg(not(windows))]
-            Format::Zip => Err("portable zips can only be installed on Windows".to_owned()),
-        }
+            Format::Zip | Format::Msi => return Err("this package format can only be installed on Windows".to_owned()),
+        };
+        Ok(placed)
     })();
     let _ = fs::remove_file(&part);
-    let (payload, exe) = match result {
+    let placed = match result {
         Ok(placed) => placed,
         Err(e) => {
             // A failed or cancelled first install leaves no empty app folder behind.
-            if previous.is_none() {
-                let _ = fs::remove_dir(&dir);
-            }
+            let _ = fs::remove_dir(&dir); // only succeeds when empty
             return Err(e);
         }
     };
@@ -125,30 +200,58 @@ pub fn install(
         id: id.to_owned(),
         version: release.version.clone(),
         format,
-        payload,
-        exe,
+        payload: placed.payload,
+        exe: placed.exe,
         asset: asset.name.clone(),
         sha256: expected,
         installed: now(),
+        msi: placed.msi,
     };
     let json = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
-    write_atomic(&dir.join(MANIFEST), &json).map_err(|e| format!("couldn't write the manifest: {e}"))?;
 
-    if let Some(prev) = previous
-        && prev.payload != manifest.payload
-    {
-        remove_any(&dir.join(&prev.payload));
+    #[cfg(windows)]
+    if manifest.msi.is_some() {
+        write_atomic(&msi_manifest_path(id), &json).map_err(|e| format!("couldn't write the manifest: {e}"))?;
+        // The app lives in Program Files now; a copy in the install folder goes.
+        if previous.is_some_and(|p| p.msi.is_none()) {
+            remove_any(&dir);
+        } else {
+            tidy(&dir);
+        }
+        return Ok(manifest);
     }
+
+    write_atomic(&dir.join(MANIFEST), &json).map_err(|e| format!("couldn't write the manifest: {e}"))?;
     clean_leftovers(&dir);
+    match previous {
+        // Converting from the MSI: remove what Windows Installer installed.
+        #[cfg(windows)]
+        Some(prev) if prev.msi.is_some() => {
+            let product = prev.msi.as_ref().map(|p| p.product_code.as_str()).unwrap_or_default();
+            crate::msi::uninstall(&crate::msi::queue(), product).map_err(|e| {
+                format!("installed as {}, but the copy installed from the MSI couldn't be removed: {e}", format.label())
+            })?;
+            let _ = fs::remove_file(msi_manifest_path(id));
+        }
+        Some(prev) if prev.payload != manifest.payload => remove_any(&dir.join(&prev.payload)),
+        _ => {}
+    }
     Ok(manifest)
 }
 
-/// Remove a managed app. Refuses unless the folder carries this app's manifest.
+/// Remove a managed app. Refuses unless the folder carries this app's manifest,
+/// or on Windows, the launcher installed it from its MSI.
 pub fn uninstall(base: &Path, id: &str) -> Result<(), String> {
-    if read_manifest(base, id).is_none() {
-        return Err(format!("{} is not managed by the launcher", base.join(id).display()));
+    if read_manifest(base, id).is_some() {
+        return fs::remove_dir_all(base.join(id)).map_err(|e| format!("couldn't remove {}: {e}", base.join(id).display()));
     }
-    fs::remove_dir_all(base.join(id)).map_err(|e| format!("couldn't remove {}: {e}", base.join(id).display()))
+    #[cfg(windows)]
+    if let Some(product) = read_msi_manifest(id).and_then(|m| m.msi) {
+        crate::msi::uninstall(&crate::msi::queue(), &product.product_code)?;
+        let _ = fs::remove_file(msi_manifest_path(id));
+        return Ok(());
+    }
+    Err(format!("{} is not managed by the launcher", base.join(id).display()))
 }
 
 /// Startup tidy-up for one app folder: remove `.lc-*` leftovers from an
@@ -327,6 +430,42 @@ fn drop_portable_markers(exe_dir: &Path, id: &str) {
             let _ = fs::remove_file(&path);
         }
     }
+}
+
+/// Have Windows Installer install the downloaded MSI, then find where it put
+/// the app's executable.
+#[cfg(windows)]
+fn place_msi(
+    dir: &Path,
+    id: &str,
+    part: &Path,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<Placed, String> {
+    use crate::msi;
+
+    let package = dir.join(format!("{TMP}install.msi"));
+    fs::rename(part, &package).map_err(|e| e.to_string())?;
+    let result = (|| {
+        let info = msi::read_package(&package, id)?;
+        progress(Stage::Waiting, 0, 0);
+        let turn = msi::queue();
+        if cancel.load(Ordering::Relaxed) {
+            return Err(CANCELLED.to_owned());
+        }
+        progress(Stage::Installing, 0, 0);
+        msi::install(&turn, &package, msi::is_installed(&info.product_code))?;
+        let exe = msi::component_path(&info.product_code, &info.exe_component)
+            .filter(|p| crate::detect::is_executable(p))
+            .ok_or_else(|| format!("Windows Installer finished, but {id}.exe isn't where it said"))?;
+        Ok(Placed {
+            payload: String::new(),
+            exe: exe.to_string_lossy().into_owned(),
+            msi: Some(MsiProduct { product_code: info.product_code, upgrade_code: info.upgrade_code }),
+        })
+    })();
+    let _ = fs::remove_file(&package);
+    result
 }
 
 /// Where a disk image is mounted while its app is copied out.
@@ -782,6 +921,7 @@ mod tests {
 
     /// Full round trip against GitHub (~120 MB of downloads):
     /// `LC_TEST_DIR=/tmp/x cargo test -- --ignored --nocapture`
+    /// On Windows it installs and removes the MSI too, so approve Windows' prompts.
     #[test]
     #[ignore]
     fn install_switch_move_uninstall() {
@@ -807,6 +947,9 @@ mod tests {
         assert_eq!(r.unwrap_err(), CANCELLED);
         assert!(!a.join(id).exists(), "a cancelled first install leaves no folder");
 
+        // On Windows: the MSI first (Windows asks for approval), then the archive, which removes it.
+        #[cfg(windows)]
+        let mut msi_product: Option<String> = None;
         for &format in Format::available() {
             let c = releases::latest_compatible(id, &cached.releases, format).expect("compatible release");
             assert_eq!(c.format, format);
@@ -814,6 +957,20 @@ mod tests {
             let m = install(&a, id, c.release, c.asset, format, &cancel, &mut log).expect("install");
             assert_eq!(m.format, format);
             assert!(crate::detect::is_executable(&m.exe_path(&a)), "exe {}", m.exe);
+            if let Some(product) = &m.msi {
+                assert!(!a.join(id).exists(), "nothing of an MSI install is left in the install folder");
+                assert!(read_manifest(&a, id).is_none());
+                assert_eq!(installed(&a, id).unwrap().msi.unwrap().product_code, product.product_code);
+                #[cfg(windows)]
+                {
+                    msi_product = Some(product.product_code.clone());
+                }
+                continue;
+            }
+            #[cfg(windows)]
+            if let Some(product) = msi_product.take() {
+                assert!(!crate::msi::is_installed(&product), "converting to {format:?} removed the MSI install");
+            }
             assert_eq!(read_manifest(&a, id).unwrap().payload, m.payload);
             // Only the manifest and the current payload remain.
             let mut names: Vec<String> =

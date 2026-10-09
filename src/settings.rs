@@ -21,6 +21,9 @@ pub enum Format {
     Dmg,
     /// `<app>-<version>-windows-<arch>-portable.zip`, unpacked into the install folder.
     Zip,
+    /// `<app>-<version>-windows-<arch>.msi`, run by Windows Installer, which puts the app in
+    /// Program Files.
+    Msi,
 }
 
 impl Default for Format {
@@ -35,7 +38,8 @@ impl Format {
             Format::Tarball => "Tarball",
             Format::AppImage => "AppImage",
             Format::Dmg => "Disk image",
-            Format::Zip => "Portable zip",
+            Format::Zip => "Archive",
+            Format::Msi => "MSI",
         }
     }
 
@@ -45,8 +49,7 @@ impl Format {
         if cfg!(target_os = "macos") {
             &[Format::Dmg]
         } else if cfg!(windows) {
-            // The apps' MSIs install system-wide, outside any folder the launcher could manage.
-            &[Format::Zip]
+            &[Format::Msi, Format::Zip]
         } else if cfg!(unix) {
             &[Format::Tarball, Format::AppImage]
         } else {

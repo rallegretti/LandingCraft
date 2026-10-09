@@ -104,9 +104,10 @@ be uninstalled, updated or moved until you close it.
 - **Package format.** **Tarball** (the default) unpacks each app into its own folder and starts fastest.
   **AppImage** keeps each app as one self-contained file, and runs it with FUSE 2 when available, or by
   unpacking first. The choice applies to new installs and updates. **Reinstall** converts an app that's
-  already installed. If a release lacks the chosen format, the other one is used. On macOS the apps ship
-  only as disk images and on Windows as portable zips, so there's nothing to choose (see [macOS](#macos)
-  and [Windows](#windows)).
+  already installed. If a release lacks the chosen format, the other one is used. On Windows the choice
+  is **MSI** (the default), which runs each app's own Windows installer, or **Archive**, which unpacks
+  its portable zip (see [Windows](#windows)). On macOS the apps ship only as disk images, so there's
+  nothing to choose (see [macOS](#macos)).
 - **Updates.** The launcher checks at startup and every six hours while open, and you can turn this
   off. **Check now** runs a check straight away.
 - **Window.** The launcher draws its own title bar so it looks the same on every desktop (see
@@ -218,15 +219,34 @@ Signing needs the Xcode command line tools (`xcode-select --install`). The app i
 The launcher runs on Windows 10 and 11, drawn with Vulkan like on Linux, so it needs the Vulkan driver
 that comes with the GPU's own driver (NVIDIA, AMD and Intel all include one). Without it, the launcher
 says so in a message box and quits: that includes most virtual machines. Windows-only code lives in
-`src/win.rs` and `packaging/windows/`, and other platforms don't compile any of it.
+`src/win.rs`, `src/msi.rs` and `packaging/windows/`, and other platforms don't compile any of it.
 
-**Installing Crafting Apps.** The apps publish `<app>-<version>-windows-<arch>-portable.zip` alongside
-their MSIs. The launcher installs the zip, which it can manage like a tarball: checksummed, unpacked
-into its own folder under the same rules (plus no names Windows treats specially, such as `CON` or
-`a:b`), and swapped in when complete. The zips ship a `portable.txt` that makes an app keep its
-settings beside its executable, where the next update would replace them, so the launcher removes it:
-apps it installs keep their settings in your profile, as MSI installs do. Links, the folder picker and
-**Show in Explorer** go through the Windows shell.
+**Installing LandingCraft.** Run `landingcraft-<version>-windows-x64-setup.exe`. It installs for you
+alone, in `%LOCALAPPDATA%\Programs\LandingCraft`, so it needs no administrator approval, and adds a
+Start menu shortcut and an entry in Settings › Apps. A newer setup updates in place. Uninstalling removes
+only the launcher, not its settings or the apps it installed. Or unzip
+`landingcraft-<version>-windows-x64.zip` anywhere and run `landingcraft.exe`.
+
+**Installing Crafting Apps.** The apps publish two kinds of Windows release, and **Settings › Package
+format** chooses between them:
+
+- **MSI** (the default): `<app>-<version>-windows-<arch>.msi`, checksummed like every download, then run
+  by Windows Installer through `msi.dll`, the same API `msiexec` uses. The app goes where its installer
+  puts it, in Program Files, with Start menu and desktop shortcuts, file associations and an entry in
+  Settings › Apps, just as if you ran the MSI yourself. These MSIs install for all users, so Windows asks
+  for administrator approval for each install, update and uninstall, and shows the installer's own
+  progress window, whose Cancel button rolls the change back. Windows Installer runs one install at a
+  time, so **Update all** queues them. Since Windows decides where the app goes, the launcher keeps its
+  manifest in `%APPDATA%\landingcraft\msi\` rather than the install folder, and changing the install
+  location doesn't move it. An app removed in Settings › Apps is noticed and no longer counts as installed.
+- **Archive**: `<app>-<version>-windows-<arch>-portable.zip`, managed like a tarball: unpacked into its
+  own folder in the install location under the same rules (plus no names Windows treats specially, such
+  as `CON` or `a:b`) and swapped in when complete, with no approval needed and no shortcuts. The zips
+  ship a `portable.txt` that makes an app keep its settings beside its executable, where the next update
+  would replace them, so the launcher removes it and apps keep their settings in your profile.
+
+**Reinstall as …** in an app's More menu converts between the two, removing the other copy. Links, the
+folder picker and **Show in Explorer** go through the Windows shell.
 
 **Building.** Use Rust's GNU toolchain, which needs no Visual Studio, plus
 [MinGW-w64](https://winlibs.com) for its `dlltool` (which the `windows` crates need) and `windres`
@@ -237,15 +257,26 @@ with [Git for Windows](https://gitforwindows.org), and find WinLibs where winget
 winget install Rustlang.Rustup BrechtSanders.WinLibs.POSIX.MSVCRT   # once
 rustup default stable-x86_64-pc-windows-gnu                         # once
 ./run.sh                                                            # build and launch
-packaging/windows/package.sh                                        # the release zip
+winget install JRSoftware.InnoSetup                                 # once, for the setup
+packaging/windows/package.sh                                        # the release zip and setup
 ```
 
-`packaging/windows/package.sh` builds `landingcraft-<version>-windows-<arch>.zip` under
-`target/windows/`, holding `landingcraft.exe` with the README and licence. The exe links the C runtime
+`packaging/windows/package.sh` builds two files under `target/windows/`:
+`landingcraft-<version>-windows-<arch>.zip`, holding `landingcraft.exe` with the README and licence, and
+`landingcraft-<version>-windows-<arch>-setup.exe`, made from `packaging/windows/landingcraft.iss` by
+[Inno Setup](https://jrsoftware.org/isinfo.php) (`--no-installer` skips it). The exe links the C runtime
 statically, so it needs only DLLs that come with Windows, and opens no console window. The script
-checks both before zipping. It isn't code-signed, so Windows SmartScreen asks before the first run.
-The app icon, `packaging/windows/landingcraft.ico`, is made from `packaging/macos/AppIcon.icns` by
-`packaging/windows/make-icon.py`. Rerun that script if the icon changes.
+checks both before packaging. The app icon, `packaging/windows/landingcraft.ico`, is made from
+`packaging/macos/AppIcon.icns` by `packaging/windows/make-icon.py`. Rerun that script if the icon changes.
+
+**Signing.** Neither file is code-signed yet, so Windows SmartScreen warns before the first run ("Windows
+protected your PC", then **More info › Run anyway**). Signing needs an Authenticode certificate in a
+hardware token or a cloud service: Microsoft's Azure Artifact Signing (formerly Trusted Signing, about
+$10 a month; individuals in the US and Canada), which the Crafting Apps' own release scripts support, or
+an OV certificate from a certificate authority. A signature names the publisher and lets SmartScreen
+reputation build up for it, but even signed files can be warned about until enough people have run them:
+since 2024 not even EV certificates skip that. Sign `landingcraft.exe` before it's zipped and packed
+into the setup, then the setup itself.
 
 ## Linux releases
 
@@ -285,7 +316,7 @@ packaging/macos/package.sh --sign "…" --notarize PROFILE   # on the Mac
 packaging/linux/package.sh                                 # on Linux
 ./release.sh target/linux/landingcraft-<version>-linux-x86_64.{tar.gz,AppImage}
 packaging/windows/package.sh                               # on Windows, in Git Bash
-./release.sh target/windows/landingcraft-<version>-windows-x64.zip
+./release.sh target/windows/landingcraft-<version>-windows-x64{.zip,-setup.exe}
 ./release.sh --publish                                     # when every platform is up
 ```
 
@@ -306,6 +337,7 @@ The one exception is on macOS, where installing a disk image runs the system's o
 | GPU choice | No vendor or power class is preferred: the first hardware device the Vulkan loader (or Metal) lists is used. Override it with `LANDINGCRAFT_GPU=<part of name>` or `./run.sh --gpu` |
 | HTTPS | [ureq](https://github.com/algesten/ureq) and rustls with the pure-Rust **RustCrypto** provider (no `ring`/`aws-lc` C or assembly), trusting your system's CA certificates |
 | Archives and checksums | `flate2` (miniz_oxide), `tar`, `sha2`; on Windows also `zip`, deflate only, through the same miniz_oxide |
+| Windows Installer | The apps' MSIs are read and installed through `msi.dll`, the API `msiexec` uses, via the `windows` crate |
 | Desktop integration | [zbus](https://github.com/dbus2/zbus) talks to the XDG Desktop Portal (opening links, folder picker) and the file manager directly over D-Bus, instead of running `xdg-open`. On macOS, Cocoa's `NSWorkspace` and `NSOpenPanel` through [objc2](https://github.com/madsmtm/objc2), the bindings winit already uses. On Windows, the shell's `ShellExecuteW` and `IFileOpenDialog` through the [windows](https://github.com/microsoft/windows-rs) crate wgpu already uses |
 | Title bar | Drawn by the launcher. winit's own Wayland title bars would run `dbus-send`, `gsettings` and `fc-match` |
 
@@ -325,7 +357,8 @@ cargo test
 
 The end-to-end installer test downloads about 120 MB from GitHub. It cancels a first install, installs
 PdfCraft as a tarball, converts it to an AppImage, moves it to another folder, then uninstalls it. On
-macOS it installs the disk image instead (about 70 MB), and on Windows the portable zip (about 55 MB).
+macOS it installs the disk image instead (about 70 MB). On Windows it installs the MSI, then converts it
+to the portable zip (about 95 MB), so Windows asks for administrator approval twice.
 Run it on request:
 
 ```bash
@@ -357,11 +390,12 @@ LANDINGCRAFT_SCREENSHOT=out.png LANDINGCRAFT_DEMO=menu:vectorcraft target/debug/
 | `src/portal.rs` | Linux: desktop portal and file manager over D-Bus |
 | `src/macos.rs` | macOS: Cocoa integration, `.app` bundles and disk images |
 | `src/win.rs` | Windows: shell integration (links, folder picker, Explorer) and the startup error message |
+| `src/msi.rs` | Windows: reading, installing and removing the apps' MSIs through Windows Installer |
 | `src/screenshot.rs` | The development-only screenshot feature |
 | `packaging/` | Desktop entry and app icon |
 | `packaging/macos/` | `Info.plist`, `AppIcon.icns`, and the scripts that build, sign, notarize and install the Mac app |
 | `packaging/linux/` | The script that builds the Linux release tarball and AppImage |
-| `packaging/windows/` | The script that builds the Windows release zip, and the app icon with the script that makes it |
+| `packaging/windows/` | The script that builds the Windows release zip and setup, the setup's Inno Setup script, and the app icon with the script that makes it |
 | `build.rs` | Windows: embeds the icon and version info in the exe |
 | `docs/screenshots/` | Images used in this README |
 

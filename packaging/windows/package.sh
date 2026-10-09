@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Build LandingCraft's Windows release file: a zip holding landingcraft.exe, the README and the licence.
+# Build LandingCraft's Windows release files: a zip holding landingcraft.exe, the README and the
+# licence, and an installer.
 #
-#   packaging/windows/package.sh    build for this PC's CPU and package it
+#   packaging/windows/package.sh                  build for this PC's CPU, then the zip and installer
+#   packaging/windows/package.sh --no-installer   stop after the zip
 #
 # Runs in Git Bash (or MSYS2) with Rust's GNU toolchain and MinGW-w64 (see the README). The build
 # targets any CPU of this architecture (no -C target-cpu=native) and links the C runtime statically,
 # so the exe needs only DLLs that come with Windows, plus a Vulkan driver for the GPU.
-# Output goes to <target dir>/windows/landingcraft-<version>-windows-<arch>.zip.
+# The installer is made with Inno Setup 6 (landingcraft.iss): $ISCC, then $PATH, then where it installs.
+# Output goes to <target dir>/windows/: landingcraft-<version>-windows-<arch>.zip and -setup.exe.
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/common.sh"
 
 QUIET=0
+INSTALLER=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -q|--quiet) QUIET=1 ;;
-        -h|--help)  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *)          die "unknown option: $1 (see --help)" ;;
+        --no-installer) INSTALLER=0 ;;
+        -q|--quiet)     QUIET=1 ;;
+        -h|--help)      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *)              die "unknown option: $1 (see --help)" ;;
     esac
     shift
 done
@@ -75,3 +80,20 @@ rm -f "$OUT/$BASE.zip"
 "$(cygpath -u "${SYSTEMROOT:-C:/Windows}")/System32/tar.exe" -a -c -f "$(cygpath -w "$OUT/$BASE.zip")" \
     -C "$(cygpath -w "$stage")" "$BASE"
 info "Built $OUT/$BASE.zip"
+[[ "$INSTALLER" == 1 ]] || exit 0
+
+# ---- installer ---------------------------------------------------------------------------------
+iscc="${ISCC:-$(command -v iscc || true)}"
+if [[ -z "$iscc" ]]; then
+    for candidate in "$(cygpath -u "${LOCALAPPDATA:-$USERPROFILE/AppData/Local}")/Programs/Inno Setup 6/ISCC.exe" \
+                     "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"; do
+        if [[ -x "$candidate" ]]; then iscc="$candidate"; break; fi
+    done
+fi
+[[ -n "$iscc" ]] || die "Inno Setup not found; install it with: winget install JRSoftware.InnoSetup (or use --no-installer)"
+rm -f "$OUT/$BASE-setup.exe"
+# ISCC takes /D options, which Git Bash would otherwise turn into paths.
+MSYS2_ARG_CONV_EXCL='*' "$iscc" /Q "/DVersion=$VERSION" "/DArch=$ARCH" "/DSourceDir=$(cygpath -w "$stage/$BASE")" \
+    "/DOutputDir=$(cygpath -w "$OUT")" "$(cygpath -w "$PROJECT_DIR/packaging/windows/landingcraft.iss")"
+[[ -f "$OUT/$BASE-setup.exe" ]] || die "Inno Setup made no $BASE-setup.exe"
+info "Built $OUT/$BASE-setup.exe"

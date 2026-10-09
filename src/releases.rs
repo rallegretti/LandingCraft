@@ -150,6 +150,7 @@ pub fn asset_name(id: &str, version: &Version, format: Format) -> Option<String>
         Format::AppImage => format!("{id}-{version}-linux-{}.AppImage", arch()),
         Format::Dmg => format!("{id}-{version}-macos-universal.dmg"),
         Format::Zip => format!("{id}-{version}-windows-{}-portable.zip", windows_arch()),
+        Format::Msi => format!("{id}-{version}-windows-{}.msi", windows_arch()),
     })
 }
 
@@ -346,13 +347,18 @@ mod tests {
         .filter_map(stable)
         .collect();
 
-        // 0.10.0 only has an MSI, which the launcher can't manage; 0.9.0 is for another CPU.
-        // A Linux format left in the settings still finds the zip.
-        for preferred in [Format::Zip, Format::Tarball] {
+        // 0.10.0 only has an MSI, so an archive preference falls back to it; 0.9.0 is for another
+        // CPU. A Linux format left in the settings counts as no preference: MSI first.
+        let c = latest_compatible("x", &releases, Format::Zip).unwrap();
+        assert_eq!((c.release.version.to_string(), c.format), ("0.10.0".to_owned(), Format::Msi));
+        for preferred in [Format::Msi, Format::Tarball] {
             let c = latest_compatible("x", &releases, preferred).unwrap();
-            assert_eq!((c.release.version.to_string(), c.format), ("0.8.0".to_owned(), Format::Zip));
-            assert_eq!(c.asset.name, format!("x-0.8.0-windows-{w}-portable.zip"));
+            assert_eq!((c.release.version.to_string(), c.format), ("0.10.0".to_owned(), Format::Msi));
+            assert_eq!(c.asset.name, format!("x-0.10.0-windows-{w}.msi"));
         }
-        assert!(latest_compatible("y", &releases, Format::Zip).is_none());
+        let only_zips: Vec<Release> = releases.into_iter().filter(|r| r.version.minor == 8).collect();
+        let c = latest_compatible("x", &only_zips, Format::Zip).unwrap();
+        assert_eq!(c.asset.name, format!("x-0.8.0-windows-{w}-portable.zip"));
+        assert!(latest_compatible("y", &only_zips, Format::Msi).is_none());
     }
 }

@@ -254,12 +254,9 @@ impl Launcher {
 
     fn rescan(&mut self) {
         for (i, app) in APPS.iter().enumerate() {
-            self.managed[i] = installer::read_manifest(&self.settings.install_dir, app.id);
-            self.managed_size[i] = if self.managed[i].is_some() {
-                installer::disk_usage(&self.settings.install_dir.join(app.id))
-            } else {
-                0
-            };
+            self.managed[i] = installer::installed(&self.settings.install_dir, app.id);
+            self.managed_size[i] =
+                self.managed[i].as_ref().map_or(0, |m| installer::disk_usage(&m.folder(&self.settings.install_dir)));
             self.external[i] = match self.settings.custom_paths.get(app.id).map(PathBuf::from) {
                 Some(p) if detect::is_executable(&p) => Some(External { path: p, custom: true }),
                 _ => detect::find(app.id).map(|path| External { path, custom: false }),
@@ -472,7 +469,9 @@ impl Launcher {
             self.toast("Wait for installs to finish before changing the folder");
             return;
         }
-        let apps: Vec<usize> = (0..APPS.len()).filter(|&i| self.managed[i].is_some()).collect();
+        // Apps installed from their MSI stay where Windows put them.
+        let apps: Vec<usize> =
+            (0..APPS.len()).filter(|&i| self.managed[i].as_ref().is_some_and(|m| m.msi.is_none())).collect();
         if apps.is_empty() {
             self.apply_install_dir(to);
         } else {

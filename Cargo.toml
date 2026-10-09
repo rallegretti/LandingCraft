@@ -48,11 +48,13 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 block2 = "0.6"
 dispatch2 = "0.3"
 
-# Windows only: the shell (links, folder picker, Explorer) through the same windows crate wgpu
-# uses, and the apps' portable .zip releases (deflate only, through flate2's miniz_oxide).
+# Windows only: the shell (links, folder picker, Explorer) and Windows Installer (the apps' MSIs)
+# through the same windows crate wgpu uses, and the apps' portable .zip releases (deflate only,
+# through flate2's miniz_oxide).
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
-    "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation", "Win32_System_ApplicationInstallationAndServicing", "Win32_System_Com", "Win32_UI_Shell",
+    "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging",
 ] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 

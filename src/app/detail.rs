@@ -110,7 +110,7 @@ impl Launcher {
                     dim(ui, format!("{} · managed by the launcher", bytes(self.managed_size[idx])));
                 });
                 ui.add_space(4.0);
-                let dir = self.base().join(app.id);
+                let dir = m.folder(self.base());
                 ui.label(RichText::new(display_path(&m.exe_path(self.base()))).font(theme::mono(13.0)));
                 if self.launch_path(idx).is_none() {
                     ui.label(RichText::new("The executable is missing. Reinstall from the More menu.").color(super::widgets::DANGER));
@@ -145,15 +145,21 @@ impl Launcher {
             } else {
                 pill(ui, "Not installed", theme::TEXT_DIM, true);
                 ui.add_space(4.0);
-                dim(
-                    ui,
-                    format!(
+                let text = match self.choice(idx).map(|c| c.format) {
+                    Some(crate::settings::Format::Msi) => format!(
+                        "Installing downloads the latest stable {} MSI, verified against its published checksum, and \
+                         runs it: Windows asks for permission, then installs {} in Program Files.",
+                        crate::releases::platform(),
+                        app.name()
+                    ),
+                    format => format!(
                         "Installing downloads the latest stable {} {} into {}, verified against its published checksum.",
                         crate::releases::platform(),
-                        self.settings.format.label().to_lowercase(),
+                        format.unwrap_or(self.settings.format).label().to_lowercase(),
                         display_path(&self.base().join(app.id))
                     ),
-                );
+                };
+                dim(ui, text);
             }
 
             ui.add_space(14.0);

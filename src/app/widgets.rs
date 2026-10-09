@@ -138,7 +138,10 @@ impl Launcher {
     pub(super) fn actions(&mut self, ui: &mut Ui, idx: usize, large: bool) {
         let app = &APPS[idx];
         if self.jobs[idx].is_some() {
-            let cancellable = self.jobs[idx].as_ref().is_some_and(|j| !j.uninstalling);
+            // Windows Installer's own window has the Cancel button while it works.
+            let cancellable = self.jobs[idx]
+                .as_ref()
+                .is_some_and(|j| !j.uninstalling && j.stage != crate::installer::Stage::Installing);
             if cancellable && button(ui, "Cancel", ButtonKind::Ghost, large).clicked() {
                 self.cancel(idx);
             }
@@ -235,8 +238,9 @@ impl Launcher {
             Some(MenuAction::Releases) => self.open_url(app.releases()),
             Some(MenuAction::Details) => self.ui_state.page = Page::App(idx),
             Some(MenuAction::ShowFolder) => {
-                let dir = self.base().join(app.id);
-                self.show_folder(&dir);
+                if let Some(dir) = self.managed[idx].as_ref().map(|m| m.folder(self.base())) {
+                    self.show_folder(&dir);
+                }
             }
             Some(MenuAction::Uninstall) => self.dialog = Some(Dialog::Uninstall(idx)),
             None => {}

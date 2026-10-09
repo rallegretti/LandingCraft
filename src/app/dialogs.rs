@@ -32,18 +32,22 @@ impl Launcher {
                 match dialog {
                     Dialog::Uninstall(idx) => {
                         let app = &APPS[*idx];
-                        let version = self.managed[*idx].as_ref().map(|m| format!(" v{}", m.version)).unwrap_or_default();
+                        let m = self.managed[*idx].as_ref();
+                        let version = m.map(|m| format!(" v{}", m.version)).unwrap_or_default();
                         ui.label(RichText::new(format!("Uninstall {}{version}?", app.name())).font(theme::heading(22.0)));
                         ui.add_space(6.0);
-                        dim(
-                            ui,
+                        let folder = m.map_or_else(|| self.base().join(app.id), |m| m.folder(self.base()));
+                        let what = if m.is_some_and(|m| m.msi.is_some()) {
                             format!(
-                                "This deletes {} ({}). Documents you made with {} are not touched.",
-                                display_path(&self.base().join(app.id)),
-                                bytes(self.managed_size[*idx]),
-                                app.name()
-                            ),
-                        );
+                                "This runs {}'s Windows uninstaller, which asks for permission and removes {} ({}).",
+                                app.name(),
+                                display_path(&folder),
+                                bytes(self.managed_size[*idx])
+                            )
+                        } else {
+                            format!("This deletes {} ({}).", display_path(&folder), bytes(self.managed_size[*idx]))
+                        };
+                        dim(ui, format!("{what} Documents you made with {} are not touched.", app.name()));
                         ui.add_space(18.0);
                         buttons(ui, &mut choice, |ui| danger_button(ui, "Uninstall"));
                     }
