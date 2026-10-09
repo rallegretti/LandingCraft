@@ -119,6 +119,7 @@ pub struct Launcher {
     gpu: Option<GpuInfo>,
     /// Whether this window has the launcher's own title bar (fixed at startup).
     custom_frame: bool,
+    handoff: titlebar::Handoff,
 }
 
 /// Sends events from worker threads and wakes the UI.
@@ -167,6 +168,7 @@ impl Launcher {
         let n = APPS.len();
         let mut launcher = Self {
             custom_frame: !settings.native_title_bar,
+            handoff: titlebar::Handoff::default(),
             path_edit: APPS
                 .iter()
                 .map(|a| settings.custom_paths.get(a.id).cloned().unwrap_or_default())
@@ -650,6 +652,11 @@ impl Launcher {
 }
 
 impl eframe::App for Launcher {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let pos = ctx.input(|i| i.pointer.latest_pos()).unwrap_or_default();
+        self.handoff.patch(raw_input, pos);
+    }
+
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_events();
         self.processes.poll();
