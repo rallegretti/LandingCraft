@@ -6,7 +6,7 @@
 
 <p align="center">
   A native launcher for the <a href="https://getartcraft.com/apps">ArtCraft Crafting Apps</a>.<br>
-  Install, update, open and remove all nine apps from one window.
+  Install, update, open and remove every Crafting App from one window.
 </p>
 
 <p align="center">

@@ -16,8 +16,7 @@ impl Launcher {
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
-            let accents: Vec<Color32> = APPS.iter().map(|a| a.accent).collect();
-            theme::paint_logo(ui, rect.center(), 18.0, &accents);
+            theme::paint_logo(ui, rect.center(), 18.0);
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.label(RichText::new("LandingCraft").font(theme::heading(18.0)));
@@ -126,14 +125,12 @@ impl Launcher {
     pub(super) fn home(&mut self, ui: &mut Ui, installed_only: bool) {
         let max_w = ui.available_width();
         ui.add_space(36.0);
-        let count = count_word(APPS.len());
-        eyebrow(ui, &format!("{count} apps · Open source · Pure Rust"), theme::TEXT_FAINT);
+        eyebrow(ui, "Crafting Apps · Open source · Pure Rust", theme::TEXT_FAINT);
         ui.add_space(6.0);
 
         let mut job = egui::text::LayoutJob::default();
         let fmt = |c| egui::TextFormat { font_id: theme::heading(46.0), color: c, ..Default::default() };
-        let all = format!("{count} apps. One ");
-        let (a, b) = if installed_only { ("Your ", "crafts") } else { (all.as_str(), "craft") };
+        let (a, b) = if installed_only { ("Your ", "crafts") } else { ("All the apps. One ", "craft") };
         job.append(a, 0.0, fmt(theme::TEXT));
         job.append(b, 0.0, fmt(theme::BRAND));
         job.append(".", 0.0, fmt(theme::TEXT));
@@ -324,11 +321,4 @@ impl Launcher {
             self.ui_state.page = Page::App(idx);
         }
     }
-}
-
-/// Spells out small counts for headings ("Nine apps"), falling back to digits.
-fn count_word(n: usize) -> String {
-    const WORDS: [&str; 13] =
-        ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
-    WORDS.get(n).map_or_else(|| n.to_string(), |w| (*w).to_owned())
 }

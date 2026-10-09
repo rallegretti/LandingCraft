@@ -15,7 +15,6 @@ mod theme;
 use eframe::egui;
 
 fn main() -> eframe::Result {
-    let accents: Vec<egui::Color32> = catalog::APPS.iter().map(|a| a.accent).collect();
     // The launcher draws its own title bar unless the user asked for the desktop's.
     let native_title_bar = settings::Settings::load().native_title_bar;
 
@@ -26,7 +25,7 @@ fn main() -> eframe::Result {
             .with_inner_size([1240.0, 820.0])
             .with_min_inner_size([760.0, 560.0])
             .with_decorations(native_title_bar)
-            .with_icon(theme::window_icon(&accents)),
+            .with_icon(theme::window_icon()),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: gpu::configuration(),
         ..Default::default()
