@@ -185,6 +185,24 @@ pub fn button(ui: &mut Ui, label: &str, kind: ButtonKind, large: bool) -> Respon
     response
 }
 
+/// Square "more" button drawn as three dots (no font has a reliable ⋯ glyph).
+pub fn dots_button(ui: &mut Ui, large: bool) -> Response {
+    let side = if large { 40.0 } else { 26.0 };
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), Sense::click());
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    if ui.is_rect_visible(rect) {
+        let t = ui.ctx().animate_bool(response.id, response.hovered());
+        let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response));
+        let fill = Color32::WHITE.gamma_multiply(0.06 * t.max(open as u8 as f32));
+        ui.painter().rect(rect, CornerRadius::same(3), fill, Stroke::NONE, StrokeKind::Inside);
+        let color = TEXT_DIM.lerp_to_gamma(TEXT, t);
+        for dx in [-5.0, 0.0, 5.0] {
+            ui.painter().circle_filled(rect.center() + Vec2::new(dx, 0.0), 1.6, color);
+        }
+    }
+    response
+}
+
 /// Rounded pill with a coloured dot, used for status and stage tags.
 pub fn pill(ui: &mut Ui, text: &str, color: Color32, dot: bool) -> Response {
     let font = mono(10.5);

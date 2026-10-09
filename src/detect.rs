@@ -1,4 +1,4 @@
-//! Finding installed Crafting Apps on disk and launching them.
+//! Finding Crafting Apps installed outside the launcher, and launching apps.
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
@@ -6,9 +6,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
-}
+use crate::settings::home;
 
 pub fn is_executable(path: &Path) -> bool {
     path.metadata()
@@ -18,27 +16,18 @@ pub fn is_executable(path: &Path) -> bool {
 
 /// Directories that might contain an AppImage or an unpacked release.
 fn extra_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Some(h) = home() {
-        for sub in [
-            ".local/bin",
-            ".cargo/bin",
-            "Applications",
-            "AppImages",
-            ".local/share/applications/appimages",
-            "Downloads",
-            "bin",
-        ] {
-            dirs.push(h.join(sub));
-        }
-    }
+    let h = home();
+    let mut dirs: Vec<PathBuf> = [".local/bin", ".cargo/bin", "Applications", "AppImages", "Downloads", "bin"]
+        .iter()
+        .map(|sub| h.join(sub))
+        .collect();
     dirs.push(PathBuf::from("/opt"));
     dirs
 }
 
-/// Look for an app's executable. Order: `$PATH`, well-known user directories,
-/// `/opt/<id>/`, then `<id>-*.AppImage` files or unpacked `<id>-*` release
-/// folders in the same directories.
+/// Look for an app installed by other means. Order: `$PATH`, well-known user
+/// directories, `/opt/<id>/`, then `<id>-*.AppImage` files or unpacked
+/// `<id>-*` release folders in the same directories.
 pub fn find(id: &str) -> Option<PathBuf> {
     let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
@@ -87,6 +76,23 @@ pub fn find(id: &str) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
+/// Classic AppImages mount themselves with libfuse 2. Without it they can still
+/// run by extracting to a temporary folder first (slower to start).
+pub fn has_fuse2() -> bool {
+    [
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu",
+        "/lib/x86_64-linux-gnu",
+        "/lib/aarch64-linux-gnu",
+        "/usr/lib64",
+        "/usr/lib",
+        "/lib64",
+        "/lib",
+    ]
+    .iter()
+    .any(|dir| Path::new(dir).join("libfuse.so.2").exists())
+}
+
 /// Tracks child processes started by the launcher so cards can show "Running".
 #[derive(Default)]
 pub struct Processes {
@@ -99,10 +105,12 @@ impl Processes {
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .current_dir(home())
             // Own process group, so closing the launcher doesn't take the app down with it.
             .process_group(0);
-        if let Some(dir) = home() {
-            cmd.current_dir(dir);
+        let is_appimage = exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+        if is_appimage && !has_fuse2() {
+            cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
         }
         let child = cmd.spawn()?;
         self.children.entry(id).or_default().push(child);
@@ -119,13 +127,8 @@ impl Processes {
     pub fn running(&self, id: &str) -> usize {
         self.children.get(id).map_or(0, Vec::len)
     }
-}
 
-pub fn display_path(path: &Path) -> String {
-    if let Some(h) = home()
-        && let Ok(rest) = path.strip_prefix(&h)
-    {
-        return Path::new("~").join(rest).display().to_string();
+    pub fn any_running(&self) -> bool {
+        self.children.values().any(|v| !v.is_empty())
     }
-    path.display().to_string()
 }

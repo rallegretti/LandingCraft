@@ -12,7 +12,7 @@ eframe = { version = "0.36", default-features = false, features = ["wgpu_no_defa
 wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "vulkan", "wgsl"] }
 # Pure-Rust WebP decoding for the bundled app icons.
 image = { version = "0.25", default-features = false, features = ["webp"] }
-# Pure-Rust D-Bus, used to ask the desktop portal to open web links.
+# Pure-Rust D-Bus: desktop portal (links, folder picker) and the file manager.
 zbus = "5"
 # HTTPS for GitHub releases: rustls with the pure-Rust RustCrypto provider (no
 # ring/aws-lc C or assembly), trusting the system's CA certificates.
