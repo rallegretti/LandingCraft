@@ -1,6 +1,6 @@
 [package]
 name = "landingcraft"
-version = "0.1.0"
+version = "0.2.5"
 edition = "2024"
 description = "A native launcher for the ArtCraft Crafting Apps"
 license = "CC0-1.0"
