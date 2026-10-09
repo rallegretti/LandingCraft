@@ -225,7 +225,9 @@ pub fn pill(ui: &mut Ui, text: &str, color: Color32, dot: bool) -> Response {
     response
 }
 
-/// The launcher's mark: seven dots in a ring, one per app accent.
+/// The launcher's mark: a ring of dots, one per app accent.
+///
+/// Dots shrink as apps are added so neighbours keep a gap between them.
 pub fn paint_logo(ui: &Ui, center: egui::Pos2, radius: f32, accents: &[Color32]) {
     let p = ui.painter();
     p.rect_filled(
@@ -234,10 +236,11 @@ pub fn paint_logo(ui: &Ui, center: egui::Pos2, radius: f32, accents: &[Color32])
         SURFACE_HI,
     );
     let n = accents.len() as f32;
+    let dot = logo_dot_radius(radius * 0.55, accents.len()).min(radius * 0.17);
     for (i, c) in accents.iter().enumerate() {
         let a = std::f32::consts::TAU * i as f32 / n - std::f32::consts::FRAC_PI_2;
         let pos = center + Vec2::angled(a) * radius * 0.55;
-        p.circle_filled(pos, radius * 0.17, *c);
+        p.circle_filled(pos, dot, *c);
     }
 }
 
@@ -246,6 +249,7 @@ pub fn window_icon(accents: &[Color32]) -> egui::IconData {
     const S: usize = 128;
     let mut rgba = vec![0u8; S * S * 4];
     let n = accents.len() as f32;
+    let dot = logo_dot_radius(36.0, accents.len()).min(11.0);
     let dots: Vec<(f32, f32, Color32)> = accents
         .iter()
         .enumerate()
@@ -264,7 +268,7 @@ pub fn window_icon(accents: &[Color32]) -> egui::IconData {
             let bg_a = (0.5 - outside).clamp(0.0, 1.0);
             let mut col = [0x1f as f32, 0x20 as f32, 0x26 as f32];
             for &(cx, cy, c) in &dots {
-                let d = (fx - cx).hypot(fy - cy) - 11.0;
+                let d = (fx - cx).hypot(fy - cy) - dot;
                 let cov = (0.5 - d).clamp(0.0, 1.0);
                 col[0] += (c.r() as f32 - col[0]) * cov;
                 col[1] += (c.g() as f32 - col[1]) * cov;
@@ -278,6 +282,11 @@ pub fn window_icon(accents: &[Color32]) -> egui::IconData {
         }
     }
     egui::IconData { rgba, width: S as u32, height: S as u32 }
+}
+
+/// Largest dot radius that leaves a gap of a fifth of the spacing between `n` dots on a ring.
+fn logo_dot_radius(ring: f32, n: usize) -> f32 {
+    ring * (std::f32::consts::PI / n.max(1) as f32).sin() * 0.8
 }
 
 /// Draws text at `pos` and returns its rect; a thin wrapper to keep painting code short.

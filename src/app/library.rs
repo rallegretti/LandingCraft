@@ -126,12 +126,14 @@ impl Launcher {
     pub(super) fn home(&mut self, ui: &mut Ui, installed_only: bool) {
         let max_w = ui.available_width();
         ui.add_space(36.0);
-        eyebrow(ui, "Seven apps · Open source · Pure Rust", theme::TEXT_FAINT);
+        let count = count_word(APPS.len());
+        eyebrow(ui, &format!("{count} apps · Open source · Pure Rust"), theme::TEXT_FAINT);
         ui.add_space(6.0);
 
         let mut job = egui::text::LayoutJob::default();
         let fmt = |c| egui::TextFormat { font_id: theme::heading(46.0), color: c, ..Default::default() };
-        let (a, b) = if installed_only { ("Your ", "crafts") } else { ("Seven apps. One ", "craft") };
+        let all = format!("{count} apps. One ");
+        let (a, b) = if installed_only { ("Your ", "crafts") } else { (all.as_str(), "craft") };
         job.append(a, 0.0, fmt(theme::TEXT));
         job.append(b, 0.0, fmt(theme::BRAND));
         job.append(".", 0.0, fmt(theme::TEXT));
@@ -141,11 +143,11 @@ impl Launcher {
         let sub = if installed_only {
             "Crafting Apps on this machine. The launcher keeps the ones it installed up to date."
         } else {
-            "Image editing, vector illustration, video, photography, PDFs, motion graphics and \
-             page layout. Native, open-source apps from the ArtCraft team, built in Rust and free to use."
+            "Image editing, vector illustration, video, photography, PDFs, motion graphics, page layout, \
+             audio and CAD. Native, open-source apps from the ArtCraft team, built in Rust and free to use."
         };
         ui.scope(|ui| {
-            ui.set_max_width(max_w.min(640.0));
+            ui.set_max_width(max_w.min(680.0));
             ui.label(RichText::new(sub).font(theme::body(15.5)).color(theme::TEXT_DIM));
         });
         ui.add_space(18.0);
@@ -322,4 +324,11 @@ impl Launcher {
             self.ui_state.page = Page::App(idx);
         }
     }
+}
+
+/// Spells out small counts for headings ("Nine apps"), falling back to digits.
+fn count_word(n: usize) -> String {
+    const WORDS: [&str; 13] =
+        ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+    WORDS.get(n).map_or_else(|| n.to_string(), |w| (*w).to_owned())
 }

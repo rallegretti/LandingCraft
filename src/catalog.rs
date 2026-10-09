@@ -1,4 +1,4 @@
-//! Static catalog of the Crafting Apps listed on <https://getartcraft.com/apps>.
+//! Static catalog of the Crafting Apps, most of which are listed on <https://getartcraft.com/apps>.
 
 use eframe::egui::Color32;
 
@@ -35,6 +35,8 @@ pub struct CraftApp {
     pub stage: Stage,
     pub version: &'static str,
     pub web: bool,
+    /// Whether the app has its own page on getartcraft.com yet.
+    pub listed: bool,
     pub icon_webp: &'static [u8],
     pub highlights: [Highlight; 6],
 }
@@ -44,8 +46,8 @@ impl CraftApp {
         format!("{}Craft", self.prefix)
     }
 
-    pub fn website(&self) -> String {
-        format!("https://getartcraft.com/apps/{}", self.id)
+    pub fn website(&self) -> Option<String> {
+        self.listed.then(|| format!("https://getartcraft.com/apps/{}", self.id))
     }
 
     pub fn repo(&self) -> String {
@@ -78,7 +80,7 @@ pub const DISCORD: &str = "https://discord.gg/artcraft";
 pub const GITHUB_ORG: &str = "https://github.com/storytold";
 pub const APPS_PAGE: &str = "https://getartcraft.com/apps";
 
-pub static APPS: [CraftApp; 7] = [
+pub static APPS: [CraftApp; 9] = [
     CraftApp {
         id: "photocraft",
         prefix: "Photo",
@@ -90,6 +92,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::EarlyAlpha,
         version: "0.5.0",
         web: true,
+        listed: true,
         icon_webp: icon!("photocraft"),
         highlights: [
             h("Familiar by design", "The menus, shortcuts, panels and tools your hands already know. Productive on day one."),
@@ -111,6 +114,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::InDevelopment,
         version: "0.6.0",
         web: true,
+        listed: true,
         icon_webp: icon!("vectorcraft"),
         highlights: [
             h("The workflow you know", "Pen, direct selection, shape booleans, snapping guides and an appearance panel."),
@@ -132,6 +136,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::InDevelopment,
         version: "0.4.0",
         web: false,
+        listed: true,
         icon_webp: icon!("filmcraft"),
         highlights: [
             h("A timeline you already know", "Source and program monitors, three-point editing, every trim mode, J/K/L."),
@@ -153,6 +158,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::InDevelopment,
         version: "0.4.0",
         web: true,
+        listed: true,
         icon_webp: icon!("lightcraft"),
         highlights: [
             h("Non-destructive by design", "A scene-referred, wide-gamut, 32-bit float pipeline. Originals untouched."),
@@ -174,6 +180,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::EarlyAlpha,
         version: "0.4.0",
         web: true,
+        listed: true,
         icon_webp: icon!("pdfcraft"),
         highlights: [
             h("Faithful rendering", "World scripts, vertical Japanese, color emoji and transparency."),
@@ -195,6 +202,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::InDevelopment,
         version: "0.6.0",
         web: true,
+        listed: true,
         icon_webp: icon!("effectcraft"),
         highlights: [
             h("Animate the way you know", "Linear, bezier, hold and eased keys, roving keys and a graph editor."),
@@ -216,6 +224,7 @@ pub static APPS: [CraftApp; 7] = [
         stage: Stage::InDevelopment,
         version: "0.4.0",
         web: true,
+        listed: true,
         icon_webp: icon!("designcraft"),
         highlights: [
             h("The layout tools you know", "Spreads, parent pages, threaded frames, styles, swatches and text wrap."),
@@ -224,6 +233,50 @@ pub static APPS: [CraftApp; 7] = [
             h("Fast", "Multithreaded SIMD rendering and copy-on-write documents with instant undo."),
             h("Open formats", "A documented native format, PNG export and layout interchange."),
             h("Agent-native", "Every menu, tool and dialog can be driven over JSON control or MCP."),
+        ],
+    },
+    CraftApp {
+        id: "soundcraft",
+        prefix: "Sound",
+        category: "Audio workstation",
+        tagline: "Open-source recording, editing and mixing, rebuilt in pure Rust.",
+        summary: "A complete digital audio workstation: multitrack editing, a full mixer with plugins, \
+                  sends and automation, MIDI, recording and bouncing, in a native app written in pure Rust.",
+        accent: Color32::from_rgb(0x14, 0xa9, 0xc4),
+        stage: Stage::InDevelopment,
+        version: "0.3.0",
+        web: true,
+        listed: false,
+        icon_webp: icon!("soundcraft"),
+        highlights: [
+            h("The workflow you know", "Edit and Mix windows, Shuffle, Slip, Spot and Grid modes, playlists and memory locations."),
+            h("A full mixer", "Ten inserts and ten sends per track, busses, VCAs and automatic delay compensation."),
+            h("Live automation", "Volume, pan, sends and every plugin parameter, written in Write, Touch, Latch and Trim."),
+            h("MIDI and notation", "Built-in synths, a piano roll with velocity lane, step input, quantize and a Score Editor."),
+            h("Your plugins too", "Original EQs, dynamics, reverbs and delays, plus CLAP, VST3 and Audio Units."),
+            h("Surround and picture", "Formats up to 9.1.6 and Ambisonics, and a video track decoding H.264 and ProRes."),
+        ],
+    },
+    CraftApp {
+        id: "cadcraft",
+        prefix: "CAD",
+        category: "CAD & drafting",
+        tagline: "Open-source computer-aided design and drafting, rebuilt in pure Rust.",
+        summary: "The command line, object snaps, layers, dimensions, hatches, blocks and DXF drawings \
+                  you already know, in a fast native app written in pure Rust.",
+        accent: Color32::from_rgb(0x14, 0xa3, 0xc7),
+        stage: Stage::InDevelopment,
+        version: "0.3.0",
+        web: true,
+        listed: false,
+        icon_webp: icon!("cadcraft"),
+        highlights: [
+            h("The workflow you know", "Type L, click two points, type @5<45. Prompts, AutoComplete, grips and repeat."),
+            h("Precision drafting", "Object snaps, polar tracking, ortho, grid snap and direct distance entry."),
+            h("Full annotation", "Every DIM command with dimension styles, multileaders, tables and TrueType text."),
+            h("Open drawings", "DXF read and write from R12 to 2018, and DWG through the open-source acadrust."),
+            h("Layouts and plotting", "Paper space, scaled viewports, page setups and PLOT to PDF, SVG and PNG."),
+            h("Parametric", "Geometric and dimensional constraints that re-solve after every edit."),
         ],
     },
 ];

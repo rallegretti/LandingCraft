@@ -75,8 +75,10 @@ impl Launcher {
             self.actions(ui, idx, true);
             self.more_menu(ui, idx, true);
             ui.add_space(8.0);
-            if button(ui, "Website ↗", ButtonKind::Outline, true).clicked() {
-                self.open_url(app.website());
+            if let Some(url) = app.website()
+                && button(ui, "Website ↗", ButtonKind::Outline, true).clicked()
+            {
+                self.open_url(url);
             }
             if button(ui, "Source ↗", ButtonKind::Outline, true).clicked() {
                 self.open_url(app.repo());

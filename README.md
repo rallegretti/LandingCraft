@@ -6,7 +6,7 @@
 
 <p align="center">
   A native launcher for the <a href="https://getartcraft.com/apps">ArtCraft Crafting Apps</a>.<br>
-  Install, update, open and remove all seven apps from one window.
+  Install, update, open and remove all nine apps from one window.
 </p>
 
 <p align="center">
@@ -38,6 +38,8 @@
 | <img src="assets/icons/pdfcraft.webp" width="32"> | **PdfCraft** | PDF workbench |
 | <img src="assets/icons/effectcraft.webp" width="32"> | **EffectCraft** | Motion graphics and VFX |
 | <img src="assets/icons/designcraft.webp" width="32"> | **DesignCraft** | Page layout and publishing |
+| <img src="assets/icons/soundcraft.webp" width="32"> | **SoundCraft** | Audio workstation |
+| <img src="assets/icons/cadcraft.webp" width="32"> | **CADCraft** | CAD and drafting |
 
 Each app has its own accent colour, taken from its icon background. Its card, page and buttons all use it.
 

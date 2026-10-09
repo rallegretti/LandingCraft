@@ -7,6 +7,6 @@ Exec=landingcraft
 Icon=landingcraft
 Terminal=false
 Categories=Graphics;
-Keywords=ArtCraft;PhotoCraft;VectorCraft;FilmCraft;LightCraft;PdfCraft;EffectCraft;DesignCraft;launcher;updater;
+Keywords=ArtCraft;PhotoCraft;VectorCraft;FilmCraft;LightCraft;PdfCraft;EffectCraft;DesignCraft;SoundCraft;CADCraft;launcher;updater;
 StartupNotify=true
 StartupWMClass=landingcraft

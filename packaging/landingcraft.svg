@@ -1,11 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <title>LandingCraft</title>
   <rect width="128" height="128" rx="28" fill="#1f2026"/>
-  <circle cx="64.00" cy="28.00" r="11" fill="#2f7bf5"/>
-  <circle cx="92.15" cy="41.55" r="11" fill="#e7573e"/>
-  <circle cx="99.10" cy="72.01" r="11" fill="#8b5bf6"/>
-  <circle cx="79.62" cy="96.43" r="11" fill="#f3a617"/>
-  <circle cx="48.38" cy="96.43" r="11" fill="#13a48a"/>
-  <circle cx="28.90" cy="72.01" r="11" fill="#e03690"/>
-  <circle cx="35.85" cy="41.55" r="11" fill="#7ab51b"/>
-</svg>
+  <circle cx="64.00" cy="28.00" r="9.85" fill="#2f7bf5"/>
+  <circle cx="87.14" cy="36.42" r="9.85" fill="#e7573e"/>
+  <circle cx="99.45" cy="57.75" r="9.85" fill="#8b5bf6"/>
+  <circle cx="95.18" cy="82.00" r="9.85" fill="#f3a617"/>
+  <circle cx="76.31" cy="97.83" r="9.85" fill="#13a48a"/>
+  <circle cx="51.69" cy="97.83" r="9.85" fill="#e03690"/>
+  <circle cx="32.82" cy="82.00" r="9.85" fill="#7ab51b"/>
+  <circle cx="28.55" cy="57.75" r="9.85" fill="#14a9c4"/>
+  <circle cx="40.86" cy="36.42" r="9.85" fill="#14a3c7"/>
