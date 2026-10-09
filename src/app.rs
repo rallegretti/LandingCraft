@@ -201,7 +201,7 @@ impl Launcher {
             ));
         }
         for app in &APPS {
-            installer::clean_leftovers(&launcher.settings.install_dir.join(app.id));
+            installer::tidy(&launcher.settings.install_dir.join(app.id));
         }
         launcher.rescan();
 

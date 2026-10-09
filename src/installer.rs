@@ -80,11 +80,11 @@ pub fn install(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Stage, u64, u64),
 ) -> Result<Manifest, String> {
+    let expected = expected_sha256(release, asset)?;
     let dir = base.join(id);
     fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {}: {e}", dir.display()))?;
     let previous = read_manifest(base, id);
 
-    let expected = expected_sha256(release, asset)?;
     let part = dir.join(format!("{TMP}download.part"));
     let result = (|| {
         let actual = download(asset, &part, cancel, progress)?;
@@ -98,7 +98,16 @@ pub fn install(
         }
     })();
     let _ = fs::remove_file(&part);
-    let (payload, exe) = result?;
+    let (payload, exe) = match result {
+        Ok(placed) => placed,
+        Err(e) => {
+            // A failed or cancelled first install leaves no empty app folder behind.
+            if previous.is_none() {
+                let _ = fs::remove_dir(&dir);
+            }
+            return Err(e);
+        }
+    };
 
     progress(Stage::Finishing, 0, 1);
     let manifest = Manifest {
@@ -129,6 +138,14 @@ pub fn uninstall(base: &Path, id: &str) -> Result<(), String> {
         return Err(format!("{} is not managed by the launcher", base.join(id).display()));
     }
     fs::remove_dir_all(base.join(id)).map_err(|e| format!("couldn't remove {}: {e}", base.join(id).display()))
+}
+
+/// Startup tidy-up for one app folder: remove `.lc-*` leftovers from an
+/// interrupted install, then the folder itself if that leaves it empty (an
+/// install that was cut off before anything was placed).
+pub fn tidy(dir: &Path) {
+    clean_leftovers(dir);
+    let _ = fs::remove_dir(dir); // only succeeds when empty
 }
 
 /// Delete `.lc-*` leftovers from an interrupted install.
@@ -516,6 +533,12 @@ mod tests {
                 eprintln!("  {s:?} {d}/{t}");
             }
         };
+
+        let first = releases::latest_compatible(id, &cached.releases, Format::Tarball).expect("compatible release");
+        let cancelled = AtomicBool::new(true);
+        let r = install(&a, id, first.release, first.asset, Format::Tarball, &cancelled, &mut |_, _, _| {});
+        assert_eq!(r.unwrap_err(), CANCELLED);
+        assert!(!a.join(id).exists(), "a cancelled first install leaves no folder");
 
         for format in [Format::Tarball, Format::AppImage] {
             let c = releases::latest_compatible(id, &cached.releases, format).expect("compatible release");
