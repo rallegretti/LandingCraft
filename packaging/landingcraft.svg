@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>LandingCraft</title>
+  <rect width="128" height="128" rx="28" fill="#1f2026"/>
+  <circle cx="64.00" cy="28.00" r="11" fill="#2f7bf5"/>
+  <circle cx="92.15" cy="41.55" r="11" fill="#e7573e"/>
+  <circle cx="99.10" cy="72.01" r="11" fill="#8b5bf6"/>
+  <circle cx="79.62" cy="96.43" r="11" fill="#f3a617"/>
+  <circle cx="48.38" cy="96.43" r="11" fill="#13a48a"/>
+  <circle cx="28.90" cy="72.01" r="11" fill="#e03690"/>
+  <circle cx="35.85" cy="41.55" r="11" fill="#7ab51b"/>
+</svg>

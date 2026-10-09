@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=LandingCraft
+GenericName=App Launcher
+Comment=Install, update and launch the ArtCraft Crafting Apps
+Exec=landingcraft
+Icon=landingcraft
+Terminal=false
+Categories=Graphics;
+Keywords=ArtCraft;PhotoCraft;VectorCraft;FilmCraft;LightCraft;PdfCraft;EffectCraft;DesignCraft;launcher;updater;
+StartupNotify=true
+StartupWMClass=landingcraft

@@ -20,6 +20,18 @@ files are slow on those filesystems. Setting `CARGO_TARGET_DIR` overrides this. 
 with the same options as the last `build.sh`. It also accepts `--gpu NAME`, `--list-gpus` and
 `--no-build`. Both scripts take `--help`.
 
+To install it for your user, with an application-menu entry and icon:
+
+```bash
+./install.sh               # binary to ~/.local/bin, menu entry and icon under ~/.local/share
+./install.sh --uninstall   # removes those three files; installed Crafting Apps stay
+```
+
+`--prefix /usr/local` (run as root) installs system-wide instead. The menu entry comes from
+`packaging/landingcraft.desktop`, and its file name matches the window's Wayland app ID
+(`landingcraft`), which is how desktops connect the running window to its icon
+(`packaging/landingcraft.svg`).
+
 You need a Vulkan driver for at least one GPU. Nothing else is required at build time. No C/C++ code is
 compiled, and the binary links only against libc. At runtime it loads the system Vulkan loader and
 Wayland or X11 libraries. HTTPS uses rustls with the pure-Rust RustCrypto provider and your system's CA
@@ -109,6 +121,7 @@ LANDINGCRAFT_GPU=radv cargo run --release
 | `src/gpu.rs` | Vulkan-only wgpu setup and adapter selection |
 | `src/portal.rs` | Desktop portal and file manager over D-Bus |
 | `assets/icons` | App icons from getartcraft.com |
+| `packaging/` | Desktop entry and scalable app icon, installed by `install.sh` |
 | `assets/fonts` | Space Grotesk and IBM Plex (SIL OFL 1.1, see `assets/fonts/OFL.txt`) |
 
 ## Tests
