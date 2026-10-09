@@ -23,6 +23,8 @@
 - [How installs work](#how-installs-work)
 - [Getting started](#getting-started)
 - [macOS](#macos)
+- [Linux releases](#linux-releases)
+- [Publishing a release](#publishing-a-release)
 - [Built in Rust](#built-in-rust)
 - [Development](#development)
 - [Credits](#credits)
@@ -205,7 +207,31 @@ Signing needs the Xcode command line tools (`xcode-select --install`). The app i
 `packaging/macos/AppIcon.icns`, is rendered from `packaging/landingcraft.svg` by
 `packaging/macos/make-icon.swift`. Rerun that script if the SVG changes.
 
-### Publishing a release
+## Linux releases
+
+`packaging/linux/package.sh` builds the two Linux release files, under `target/linux/`:
+
+- `landingcraft-<version>-linux-<arch>.tar.gz`: a plain `bin/` + `share/` tree with the binary, desktop
+  entry, icon, README and licence. Unpack it anywhere and run `bin/landingcraft`.
+- `landingcraft-<version>-linux-<arch>.AppImage`: one file to download, mark executable and run.
+
+By default it builds inside an Ubuntu 22.04 container (Docker or Podman), so the binary needs only glibc
+2.35 and runs on Ubuntu 22.04+, Debian 12+ and other distros of that age or newer, the same baseline as
+the Crafting Apps. A release build made directly on a newer distro would refuse to start on older ones,
+and `build.sh`'s default is tuned for the building machine's CPU, so neither is suitable for publishing.
+
+```bash
+packaging/linux/package.sh                 # container build: the files to publish
+packaging/linux/package.sh --host          # build on this machine instead (runs only on glibc >= its own)
+packaging/linux/package.sh --no-appimage   # tarball only
+```
+
+The container uses the same Rust version as your machine and keeps its toolchain and crates in
+`target/linux/`, so later builds are quick. The AppImage is made with
+[appimagetool](https://github.com/AppImage/appimagetool) (from `$APPIMAGETOOL` or your `PATH`, otherwise
+downloaded once). It embeds the static type-2 runtime, so it doesn't need libfuse2.
+
+## Publishing a release
 
 `release.sh` uploads built files to the GitHub release for the version in `Cargo.toml` (tag
 `v<version>`). Each platform builds and uploads its own files from its own machine, at the same pushed
@@ -215,11 +241,13 @@ public:
 ```bash
 gh auth login                                              # once per machine
 packaging/macos/package.sh --sign "…" --notarize PROFILE   # on the Mac
-./release.sh target/macos/landingcraft-0.1.0-macos-universal.dmg
-./release.sh --publish                                     # when you are ready to go public
+./release.sh target/macos/landingcraft-<version>-macos-universal.dmg
+packaging/linux/package.sh                                 # on Linux
+./release.sh target/linux/landingcraft-<version>-linux-x86_64.{tar.gz,AppImage}
+./release.sh --publish                                     # when every platform is up
 ```
 
-A platform can also be added after publishing: check out the release's tag (`git checkout v0.1.0`),
+A platform can also be added after publishing: check out the release's tag (`git checkout v<version>`),
 build, and upload as usual. The script refuses uncommitted or unpushed code, a commit other than the
 release's, files not named for the current version, a disk image that isn't notarized, and replacing a
 file that's already published. Bump `version` in `Cargo.toml` for each new release.
@@ -290,6 +318,7 @@ LANDINGCRAFT_SCREENSHOT=out.png LANDINGCRAFT_DEMO=menu:vectorcraft target/debug/
 | `src/screenshot.rs` | The development-only screenshot feature |
 | `packaging/` | Desktop entry and app icon |
 | `packaging/macos/` | `Info.plist`, `AppIcon.icns`, and the scripts that build, sign, notarize and install the Mac app |
+| `packaging/linux/` | The script that builds the Linux release tarball and AppImage |
 | `docs/screenshots/` | Images used in this README |
 
 ## Credits
