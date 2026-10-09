@@ -121,15 +121,29 @@ pub fn arch() -> &'static str {
     }
 }
 
-pub fn asset_name(id: &str, version: &Version, format: Format) -> String {
-    match format {
-        Format::Tarball => format!("{id}-{version}-linux-{}.tar.gz", arch()),
-        Format::AppImage => format!("{id}-{version}-linux-{}.AppImage", arch()),
+/// "Linux x86_64", "macOS" (the Mac builds are universal), and so on.
+pub fn platform() -> String {
+    match std::env::consts::OS {
+        "macos" => "macOS".to_owned(),
+        "windows" => format!("Windows {}", arch()),
+        _ => format!("Linux {}", arch()),
     }
 }
 
+/// The release file for `format` on this OS and CPU, if the format exists here.
+pub fn asset_name(id: &str, version: &Version, format: Format) -> Option<String> {
+    if !Format::available().contains(&format) {
+        return None;
+    }
+    Some(match format {
+        Format::Tarball => format!("{id}-{version}-linux-{}.tar.gz", arch()),
+        Format::AppImage => format!("{id}-{version}-linux-{}.AppImage", arch()),
+        Format::Dmg => format!("{id}-{version}-macos-universal.dmg"),
+    })
+}
+
 /// What to install: the newest stable release with a build for this OS and
-/// CPU, in the preferred format if that release has it, otherwise the other one.
+/// CPU, in the preferred format if that release has it, otherwise another one.
 pub struct Choice<'a> {
     pub release: &'a Release,
     pub asset: &'a Asset,
@@ -140,8 +154,9 @@ pub fn latest_compatible<'a>(id: &str, releases: &'a [Release], preferred: Forma
     let mut sorted: Vec<&Release> = releases.iter().collect();
     sorted.sort_by(|a, b| b.version.cmp(&a.version));
     sorted.into_iter().find_map(|release| {
-        [preferred, preferred.other()].into_iter().find_map(|format| {
-            let name = asset_name(id, &release.version, format);
+        let others = Format::available().iter().copied().filter(|&f| f != preferred);
+        std::iter::once(preferred).chain(others).find_map(|format| {
+            let name = asset_name(id, &release.version, format)?;
             let asset = release.assets.iter().find(|a| a.name == name)?;
             Some(Choice { release, asset, format })
         })
@@ -260,6 +275,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn picks_newest_compatible_release() {
         let a = arch();
         let releases: Vec<Release> = [
@@ -278,5 +294,29 @@ mod tests {
         let c = latest_compatible("x", &releases, Format::AppImage).unwrap();
         assert_eq!(c.release.version.to_string(), "0.9.0");
         assert!(latest_compatible("y", &releases, Format::Tarball).is_none());
+        assert!(latest_compatible("x", &releases, Format::Dmg).is_some(), "an unavailable preference falls back");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn picks_newest_mac_release() {
+        let a = arch();
+        let releases: Vec<Release> = [
+            gh("v0.10.0", false, &[&format!("x-0.10.0-linux-{a}.tar.gz"), "x-0.10.0-windows-x64.msi"]),
+            gh("v0.9.0", false, &["x-0.9.0-macos-universal.dmg", "x-cli-0.9.0-macos-universal.zip"]),
+            gh("v0.8.0", false, &["x-0.8.0-macos-universal.dmg"]),
+            gh("v0.11.0-rc.1", false, &["x-0.11.0-rc.1-macos-universal.dmg"]),
+        ]
+        .into_iter()
+        .filter_map(stable)
+        .collect();
+
+        // 0.10.0 has no Mac build. A Linux format left in the settings still finds the disk image.
+        for preferred in [Format::Dmg, Format::Tarball] {
+            let c = latest_compatible("x", &releases, preferred).unwrap();
+            assert_eq!((c.release.version.to_string(), c.format), ("0.9.0".to_owned(), Format::Dmg));
+            assert_eq!(c.asset.name, "x-0.9.0-macos-universal.dmg");
+        }
+        assert!(latest_compatible("y", &releases, Format::Dmg).is_none());
     }
 }

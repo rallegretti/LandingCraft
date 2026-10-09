@@ -221,7 +221,7 @@ impl Launcher {
             item(ui, "Check for updates", self.checking == 0, MenuAction::Check);
             item(ui, "Releases on GitHub ↗", true, MenuAction::Releases);
             if managed {
-                item(ui, "Show in file manager", true, MenuAction::ShowFolder);
+                item(ui, crate::desktop::SHOW_FOLDER, true, MenuAction::ShowFolder);
                 ui.separator();
                 let label = if running { "Uninstall… (close the app first)" } else { "Uninstall…" };
                 item(ui, label, !busy && !running, MenuAction::Uninstall);

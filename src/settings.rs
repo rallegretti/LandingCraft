@@ -1,4 +1,5 @@
-//! Launcher settings, stored as JSON in `$XDG_CONFIG_HOME/landingcraft/settings.json`.
+//! Launcher settings, stored as JSON in `$XDG_CONFIG_HOME/landingcraft/settings.json`
+//! (on macOS, `~/Library/Application Support/landingcraft/settings.json`).
 //!
 //! These are written immediately on every change (not on exit like the UI state),
 //! because the install location must never get out of step with where apps are.
@@ -8,14 +9,21 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     /// `<app>-<version>-linux-<arch>.tar.gz`, unpacked into the install folder.
-    #[default]
     Tarball,
     /// `<app>-<version>-linux-<arch>.AppImage`, kept as a single executable file.
     AppImage,
+    /// `<app>-<version>-macos-universal.dmg`, whose `.app` bundle is copied out.
+    Dmg,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Format::available().first().copied().unwrap_or(Format::Tarball)
+    }
 }
 
 impl Format {
@@ -23,13 +31,19 @@ impl Format {
         match self {
             Format::Tarball => "Tarball",
             Format::AppImage => "AppImage",
+            Format::Dmg => "Disk image",
         }
     }
 
-    pub fn other(self) -> Self {
-        match self {
-            Format::Tarball => Format::AppImage,
-            Format::AppImage => Format::Tarball,
+    /// The formats the Crafting Apps publish for this OS, the default first.
+    /// Empty where the launcher can't install apps yet (Windows).
+    pub fn available() -> &'static [Format] {
+        if cfg!(target_os = "macos") {
+            &[Format::Dmg]
+        } else if cfg!(unix) {
+            &[Format::Tarball, Format::AppImage]
+        } else {
+            &[]
         }
     }
 }
@@ -62,13 +76,23 @@ impl Default for Settings {
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// `~/.craftapps`. On macOS, `~/Applications/Crafting Apps` instead, so that
+/// Spotlight and Launchpad find the installed apps.
 pub fn default_install_dir() -> PathBuf {
-    home().join(".craftapps")
+    if cfg!(target_os = "macos") {
+        home().join("Applications").join("Crafting Apps")
+    } else {
+        home().join(".craftapps")
+    }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn xdg(var: &str, fallback: &str) -> PathBuf {
     std::env::var_os(var)
         .map(PathBuf::from)
@@ -76,12 +100,24 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
         .unwrap_or_else(|| home().join(fallback))
 }
 
+#[cfg(not(target_os = "macos"))]
 pub fn config_dir() -> PathBuf {
     xdg("XDG_CONFIG_HOME", ".config").join("landingcraft")
 }
 
+#[cfg(not(target_os = "macos"))]
 pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("landingcraft")
+}
+
+#[cfg(target_os = "macos")]
+pub fn config_dir() -> PathBuf {
+    home().join("Library/Application Support/landingcraft")
+}
+
+#[cfg(target_os = "macos")]
+pub fn cache_dir() -> PathBuf {
+    home().join("Library/Caches/landingcraft")
 }
 
 fn settings_path() -> PathBuf {

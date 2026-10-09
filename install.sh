@@ -5,8 +5,11 @@
 #   ./install.sh                  build if needed, install under ~/.local
 #   ./install.sh --prefix DIR     install under DIR instead (e.g. /usr/local, as root)
 #   ./install.sh --uninstall      remove what was installed (apps in ~/.craftapps are kept)
+#
+# On macOS this installs LandingCraft.app instead; see packaging/macos/install.sh.
 set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/scripts/common.sh"
+[[ "$OS" == Darwin ]] && exec "$PROJECT_DIR/packaging/macos/install.sh" "$@"
 
 PREFIX="$HOME/.local"
 UNINSTALL=0
@@ -15,7 +18,7 @@ while [[ $# -gt 0 ]]; do
         --prefix)    [[ $# -ge 2 ]] || die "--prefix needs a directory"; PREFIX="$2"; shift ;;
         --prefix=*)  PREFIX="${1#--prefix=}" ;;
         --uninstall) UNINSTALL=1 ;;
-        -h|--help)   sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)   sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)           die "unknown option: $1 (see --help)" ;;
     esac
     shift

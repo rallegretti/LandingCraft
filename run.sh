@@ -2,8 +2,8 @@
 # Run LandingCraft, rebuilding first if the sources changed.
 #
 #   ./run.sh                 build if needed, then launch
-#   ./run.sh --gpu NAME      render on the Vulkan device whose name contains NAME
-#   ./run.sh --list-gpus     show the Vulkan devices on this system
+#   ./run.sh --gpu NAME      render on the GPU whose name contains NAME
+#   ./run.sh --list-gpus     show the GPUs on this system
 #   ./run.sh --no-build      launch the last build as-is
 set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/scripts/common.sh"
@@ -15,6 +15,10 @@ while [[ $# -gt 0 ]]; do
                      export LANDINGCRAFT_GPU="$2"; shift ;;
         --gpu=*)     export LANDINGCRAFT_GPU="${1#--gpu=}" ;;
         --list-gpus)
+            if [[ "$OS" == Darwin ]]; then
+                system_profiler SPDisplaysDataType 2>/dev/null | awk -F': ' '/Chipset Model/ {print "  " $2}'
+                exit 0
+            fi
             command -v vulkaninfo >/dev/null 2>&1 \
                 || die "vulkaninfo not installed (package vulkan-tools); the app's Settings page also lists devices."
             vulkaninfo --summary 2>/dev/null | awk -F'= ' '/deviceName/ {print "  " $2}'
@@ -26,7 +30,7 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] || die "no graphical session found (neither WAYLAND_DISPLAY nor DISPLAY is set)."
+[[ "$OS" == Darwin || -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] || die "no graphical session found (neither WAYLAND_DISPLAY nor DISPLAY is set)."
 
 choose_target_dir
 

@@ -1,5 +1,6 @@
 //! Managed installations: `<install dir>/<app id>/` holds the payload (an
-//! unpacked release folder or an AppImage) plus a `craftapp.json` manifest.
+//! unpacked release folder, an AppImage, or on macOS an `.app` bundle) plus a
+//! `craftapp.json` manifest.
 //! Paths in the manifest are relative to the app folder, so the whole install
 //! folder can be moved.
 //!
@@ -8,6 +9,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,7 +29,7 @@ pub struct Manifest {
     pub id: String,
     pub version: Version,
     pub format: Format,
-    /// Unpacked folder or AppImage file, relative to the app folder.
+    /// Unpacked folder, AppImage file or `.app` bundle, relative to the app folder.
     pub payload: String,
     /// Executable to launch, relative to the app folder.
     pub exe: String,
@@ -95,6 +97,10 @@ pub fn install(
         match format {
             Format::Tarball => place_tarball(&dir, id, &part, cancel, progress),
             Format::AppImage => place_appimage(&dir, &asset.name, &part),
+            #[cfg(target_os = "macos")]
+            Format::Dmg => place_dmg(&dir, id, &part, cancel, progress),
+            #[cfg(not(target_os = "macos"))]
+            Format::Dmg => Err("disk images can only be installed on macOS".to_owned()),
         }
     })();
     let _ = fs::remove_file(&part);
@@ -153,6 +159,14 @@ pub fn clean_leftovers(dir: &Path) {
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         if entry.file_name().to_string_lossy().starts_with(TMP) {
+            // A disk image left mounted by an interrupted install is unmounted
+            // first, so nothing on it is touched.
+            #[cfg(target_os = "macos")]
+            if entry.file_name() == MOUNT {
+                crate::macos::detach_dmg(&entry.path());
+                let _ = fs::remove_dir(entry.path());
+                continue;
+            }
             remove_any(&entry.path());
         }
     }
@@ -254,6 +268,7 @@ fn download(
 // ------------------------------------------------------------------- placing
 
 fn place_appimage(dir: &Path, name: &str, part: &Path) -> Result<(String, String), String> {
+    #[cfg(unix)]
     fs::set_permissions(part, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     swap_into_place(dir, part, name)?;
     Ok((name.to_owned(), name.to_owned()))
@@ -280,6 +295,50 @@ fn place_tarball(
         swap_into_place(dir, &root, &top)?;
         Ok((top.clone(), Path::new(&top).join(exe).to_string_lossy().into_owned()))
     })();
+    remove_any(&staging);
+    result
+}
+
+/// Where a disk image is mounted while its app is copied out.
+#[cfg(target_os = "macos")]
+const MOUNT: &str = ".lc-mount";
+
+/// Mount the disk image, copy its `.app` bundle out, and unmount it. The
+/// bundle is kept whole, so its code signature stays valid.
+#[cfg(target_os = "macos")]
+fn place_dmg(
+    dir: &Path,
+    id: &str,
+    part: &Path,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<(String, String), String> {
+    use crate::macos;
+
+    let mount = dir.join(MOUNT);
+    let staging = dir.join(format!("{TMP}staging"));
+    remove_any(&staging);
+    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&mount).map_err(|e| e.to_string())?;
+
+    progress(Stage::Unpacking, 0, 2);
+    let copied = macos::attach_dmg(part, &mount, cancel).and_then(|()| {
+        let app = macos::find_bundle(&mount, id).ok_or_else(|| "the disk image has no app in it".to_owned())?;
+        let name = app.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        progress(Stage::Unpacking, 1, 2);
+        macos::copy_bundle(&app, &staging.join(&name), cancel)?;
+        Ok(name)
+    });
+    // Unmount even when attaching reported failure or was cancelled part-way.
+    macos::detach_dmg(&mount);
+    let _ = fs::remove_dir(&mount);
+
+    let result = copied.and_then(|name| {
+        progress(Stage::Unpacking, 2, 2);
+        let exe = macos::bundle_executable(&staging.join(&name)).ok_or_else(|| format!("{name} has no executable"))?;
+        swap_into_place(dir, &staging.join(&name), &name)?;
+        Ok((name.clone(), Path::new(&name).join(exe).to_string_lossy().into_owned()))
+    });
     remove_any(&staging);
     result
 }
@@ -461,7 +520,7 @@ fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
     match fs::rename(from, to) {
         Ok(()) => Ok(()),
         // EXDEV: different filesystems.
-        Err(e) if e.raw_os_error() == Some(18) => {
+        Err(e) if e.kind() == io::ErrorKind::CrossesDevices => {
             if let Err(e) = copy_tree(from, to) {
                 remove_any(to);
                 return Err(e);
@@ -475,7 +534,10 @@ fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
 fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
     let meta = fs::symlink_metadata(from)?;
     if meta.file_type().is_symlink() {
-        std::os::unix::fs::symlink(fs::read_link(from)?, to)
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink(fs::read_link(from)?, to);
+        #[cfg(not(unix))]
+        return Err(io::Error::other(format!("{} is a symbolic link", from.display())));
     } else if meta.is_dir() {
         fs::create_dir(to)?;
         for entry in fs::read_dir(from)? {
@@ -540,7 +602,7 @@ mod tests {
         assert_eq!(r.unwrap_err(), CANCELLED);
         assert!(!a.join(id).exists(), "a cancelled first install leaves no folder");
 
-        for format in [Format::Tarball, Format::AppImage] {
+        for &format in Format::available() {
             let c = releases::latest_compatible(id, &cached.releases, format).expect("compatible release");
             assert_eq!(c.format, format);
             eprintln!("installing {} v{} as {format:?}", c.asset.name, c.release.version);

@@ -117,7 +117,7 @@ impl Launcher {
                 }
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if button(ui, "Show in file manager", ButtonKind::Outline, false).clicked() {
+                    if button(ui, crate::desktop::SHOW_FOLDER, ButtonKind::Outline, false).clicked() {
                         self.show_folder(&dir);
                     }
                     let can_remove = !self.busy(idx) && !self.running(idx);
@@ -148,8 +148,8 @@ impl Launcher {
                 dim(
                     ui,
                     format!(
-                        "Installing downloads the latest stable Linux {} {} into {}, verified against its published checksum.",
-                        crate::releases::arch(),
+                        "Installing downloads the latest stable {} {} into {}, verified against its published checksum.",
+                        crate::releases::platform(),
                         self.settings.format.label().to_lowercase(),
                         display_path(&self.base().join(app.id))
                     ),
@@ -197,7 +197,7 @@ impl Launcher {
                 None => {
                     let why = self.release_errors[idx]
                         .clone()
-                        .unwrap_or_else(|| format!("no stable Linux {} build has been published", crate::releases::arch()));
+                        .unwrap_or_else(|| format!("no stable {} build has been published", crate::releases::platform()));
                     ui.label(RichText::new(format!("Unavailable: {why}")).color(theme::TEXT_DIM));
                 }
             }
@@ -219,7 +219,11 @@ impl Launcher {
         dim(ui, "Point at an executable installed some other way. Used only while the launcher doesn't manage this app.");
         ui.horizontal(|ui| {
             let edit = egui::TextEdit::singleline(&mut self.path_edit[idx])
-                .hint_text(format!("e.g. ~/Applications/{}.AppImage", app.id))
+                .hint_text(if cfg!(target_os = "macos") {
+                    format!("e.g. /Applications/{}.app", app.name())
+                } else {
+                    format!("e.g. ~/Applications/{}.AppImage", app.id)
+                })
                 .font(theme::mono(13.0))
                 .desired_width((ui.available_width() - 190.0).max(200.0))
                 .margin(vec2(10.0, 8.0));

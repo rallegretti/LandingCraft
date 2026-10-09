@@ -23,7 +23,7 @@ use crate::detect::{self, Processes};
 use crate::installer::{self, Manifest, Stage};
 use crate::releases::{self, Asset, Cached, Release};
 use crate::settings::{self, Settings};
-use crate::{portal, theme};
+use crate::{desktop, theme};
 
 const STORAGE_KEY: &str = "landingcraft";
 /// Skip the startup check if the cached release lists are newer than this.
@@ -328,16 +328,16 @@ impl Launcher {
     fn open_url(&self, url: String) {
         let notify = self.notify();
         std::thread::spawn(move || {
-            if let Err(e) = portal::open_uri(&url) {
-                notify.send(Event::LinkFailed { url, err: e.to_string() });
+            if let Err(e) = desktop::open_uri(&url) {
+                notify.send(Event::LinkFailed { url, err: e });
             }
         });
     }
 
     fn show_folder(&mut self, path: &Path) {
-        if let Err(e) = portal::show_folder(path) {
+        if let Err(e) = desktop::show_folder(path) {
             self.ctx.copy_text(path.display().to_string());
-            self.toast(format!("Couldn't open the file manager ({e}). Path copied to the clipboard."));
+            self.toast(format!("Couldn't open {} ({e}). Path copied to the clipboard.", desktop::FILE_MANAGER));
         }
     }
 
@@ -380,7 +380,7 @@ impl Launcher {
             return;
         }
         let Some(choice) = self.choice(idx) else {
-            self.toast(format!("No stable {} build for Linux {} is available yet", app.name(), releases::arch()));
+            self.toast(format!("No stable {} build for {} is available yet", app.name(), releases::platform()));
             return;
         };
         let (release, asset, format): (Release, Asset, _) =
@@ -453,8 +453,7 @@ impl Launcher {
         let notify = self.notify();
         std::thread::spawn(move || {
             let start = if start.is_dir() { start } else { settings::home() };
-            let result = portal::pick_folder("Choose where Crafting Apps are installed", &start)
-                .map_err(|e| e.to_string());
+            let result = desktop::pick_folder("Choose where Crafting Apps are installed", &start);
             notify.send(Event::FolderPicked(result));
         });
     }

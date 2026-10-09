@@ -29,7 +29,8 @@ choose_target_dir
 cd "$PROJECT_DIR"
 
 # Vulkan is loaded at runtime, so its absence doesn't stop the build, but say so early.
-if ! ldconfig -p 2>/dev/null | grep 'libvulkan\.so\.1' >/dev/null; then
+# (macOS renders with Metal, which every supported Mac has.)
+if [[ "$OS" != Darwin ]] && ! ldconfig -p 2>/dev/null | grep 'libvulkan\.so\.1' >/dev/null; then
     warn "libvulkan.so.1 not found; the launcher needs a Vulkan loader and driver to run (e.g. libvulkan1 + mesa-vulkan-drivers)."
 fi
 

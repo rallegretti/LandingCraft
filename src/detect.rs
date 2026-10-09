@@ -1,20 +1,45 @@
 //! Finding Crafting Apps installed outside the launcher, and launching apps.
 
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use crate::settings::home;
 
+/// A file with an execute bit. On macOS, an `.app` bundle with a findable
+/// executable counts too.
 pub fn is_executable(path: &Path) -> bool {
-    path.metadata()
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    #[cfg(target_os = "macos")]
+    if crate::macos::is_bundle(path) {
+        return crate::macos::bundle_executable(path).is_some();
+    }
+    #[cfg(unix)]
+    let runnable = |m: &std::fs::Metadata| m.permissions().mode() & 0o111 != 0;
+    #[cfg(not(unix))]
+    let runnable = |_: &std::fs::Metadata| true;
+    path.metadata().map(|m| m.is_file() && runnable(&m)).unwrap_or(false)
+}
+
+/// macOS: look for `<id>.app` (any case) in `/Applications` and `~/Applications`.
+#[cfg(target_os = "macos")]
+pub fn find(id: &str) -> Option<PathBuf> {
+    let wanted = format!("{id}.app");
+    [PathBuf::from("/Applications"), home().join("Applications")].iter().find_map(|dir| {
+        std::fs::read_dir(dir)
+            .ok()?
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&wanted))
+            .map(|e| e.path())
+            .find(|p| is_executable(p))
+    })
 }
 
 /// Directories that might contain an AppImage or an unpacked release.
+#[cfg(not(target_os = "macos"))]
 fn extra_dirs() -> Vec<PathBuf> {
     let h = home();
     let mut dirs: Vec<PathBuf> = [".local/bin", ".cargo/bin", "Applications", "AppImages", "Downloads", "bin"]
@@ -28,6 +53,7 @@ fn extra_dirs() -> Vec<PathBuf> {
 /// Look for an app installed by other means. Order: `$PATH`, well-known user
 /// directories, `/opt/<id>/`, then `<id>-*.AppImage` files or unpacked
 /// `<id>-*` release folders in the same directories.
+#[cfg(not(target_os = "macos"))]
 pub fn find(id: &str) -> Option<PathBuf> {
     let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
@@ -78,6 +104,7 @@ pub fn find(id: &str) -> Option<PathBuf> {
 
 /// Classic AppImages mount themselves with libfuse 2. Without it they can still
 /// run by extracting to a temporary folder first (slower to start).
+#[cfg(all(unix, not(target_os = "macos")))]
 pub fn has_fuse2() -> bool {
     [
         "/usr/lib/x86_64-linux-gnu",
@@ -101,16 +128,20 @@ pub struct Processes {
 
 impl Processes {
     pub fn launch(&mut self, id: &'static str, exe: &Path) -> std::io::Result<()> {
+        // An `.app` bundle starts its executable directly, so it can be tracked like any other child.
+        #[cfg(target_os = "macos")]
+        let exe = &crate::macos::launch_target(exe);
         let mut cmd = Command::new(exe);
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .current_dir(home())
-            // Own process group, so closing the launcher doesn't take the app down with it.
-            .process_group(0);
-        let is_appimage = exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
-        if is_appimage && !has_fuse2() {
-            cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+        cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).current_dir(home());
+        // Own process group, so closing the launcher doesn't take the app down with it.
+        #[cfg(unix)]
+        cmd.process_group(0);
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let is_appimage = exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+            if is_appimage && !has_fuse2() {
+                cmd.env("APPIMAGE_EXTRACT_AND_RUN", "1");
+            }
         }
         let child = cmd.spawn()?;
         self.children.entry(id).or_default().push(child);

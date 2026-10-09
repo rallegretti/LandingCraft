@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Pure Rust</b> · <b>Vulkan</b> · <b>Linux</b> · stable releases only · checksum-verified installs
+  <b>Pure Rust</b> · <b>Vulkan</b> / <b>Metal</b> · <b>Linux</b> · <b>macOS</b> · stable releases only · checksum-verified installs
 </p>
 
 ![The LandingCraft library, with three apps installed and an update available for VectorCraft](docs/screenshots/library.webp)
@@ -22,6 +22,7 @@
 - [Settings](#settings)
 - [How installs work](#how-installs-work)
 - [Getting started](#getting-started)
+- [macOS](#macos)
 - [Built in Rust](#built-in-rust)
 - [Development](#development)
 - [Credits](#credits)
@@ -89,8 +90,9 @@ be uninstalled, updated or moved until you close it.
 
 ![Settings: installations, package format, updates and window](docs/screenshots/settings.webp)
 
-- **Installations.** Apps install to `~/.craftapps` by default. **Change location…** opens your
-  desktop's folder picker, or you can type a path. Installed apps move with the folder: renamed on the
+- **Installations.** Apps install to `~/.craftapps` by default (on macOS, `~/Applications/Crafting Apps`,
+  so Spotlight and Launchpad find them). **Change location…** opens your desktop's folder picker, or you
+  can type a path. Installed apps move with the folder: renamed on the
   same drive, or copied then deleted across drives. If anything fails partway, the apps already moved
   are put back.
 
@@ -99,14 +101,16 @@ be uninstalled, updated or moved until you close it.
 - **Package format.** **Tarball** (the default) unpacks each app into its own folder and starts fastest.
   **AppImage** keeps each app as one self-contained file, and runs it with FUSE 2 when available, or by
   unpacking first. The choice applies to new installs and updates. **Reinstall** converts an app that's
-  already installed. If a release lacks the chosen format, the other one is used.
+  already installed. If a release lacks the chosen format, the other one is used. On macOS the apps ship
+  only as disk images, so there's nothing to choose (see [macOS](#macos)).
 - **Updates.** The launcher checks at startup and every six hours while open, and you can turn this
   off. **Check now** runs a check straight away.
 - **Window.** The launcher draws its own title bar so it looks the same on every desktop (see
   [Built in Rust](#built-in-rust)). On desktops that draw title bars for apps, such as KDE Plasma,
   Xfce and most X11 window managers, **Use the desktop's title bar** switches to the native one from the
-  next start.
-- **Graphics.** Shows the GPU in use and lists every Vulkan device the system offers.
+  next start. On macOS the system's window buttons stay, over the launcher's bar, and **Use the standard
+  macOS title bar** brings back the usual one.
+- **Graphics.** Shows the GPU in use and lists every Vulkan (or, on macOS, Metal) device the system offers.
 
 ## How installs work
 
@@ -114,7 +118,7 @@ be uninstalled, updated or moved until you close it.
 ~/.craftapps/
   photocraft/
     craftapp.json                      # manifest: version, format, checksum, executable
-    photocraft-0.5.0-linux-x86_64/     # unpacked tarball (or a single .AppImage file)
+    photocraft-0.5.0-linux-x86_64/     # unpacked tarball (or a single .AppImage file, or PhotoCraft.app on macOS)
   vectorcraft/
     ...
 ```
@@ -133,15 +137,19 @@ be uninstalled, updated or moved until you close it.
 - **Movable.** Paths in each manifest are relative, so the whole install folder can be relocated.
 - **Copies installed elsewhere** are still found and can be opened. The launcher looks on `$PATH` and in
   `~/.local/bin`, `~/.cargo/bin`, `~/Applications`, `~/AppImages`, `~/Downloads`, `~/bin` and `/opt`.
-  Its own managed copy always takes priority.
+  On macOS it looks for `<App>.app` in `/Applications` and `~/Applications`. Its own managed copy always
+  takes priority.
 
 Settings are stored in `~/.config/landingcraft/settings.json`, and the release-list cache in
-`~/.cache/landingcraft/releases.json`.
+`~/.cache/landingcraft/releases.json`. On macOS they're in `~/Library/Application Support/landingcraft/`
+and `~/Library/Caches/landingcraft/`.
 
 ## Getting started
 
-You need Linux with a Vulkan driver for at least one GPU. To build, you also need
+You need Linux with a Vulkan driver for at least one GPU, or macOS 11 or later. To build, you also need
 [Rust](https://rustup.rs). Nothing else is required, because the launcher compiles no C or C++ code.
+The scripts work the same way on both; on a Mac, `install.sh` puts `LandingCraft.app` in
+`~/Applications` (see [macOS](#macos)).
 
 ```bash
 ./build.sh     # optimised release build for this CPU
@@ -153,33 +161,71 @@ You need Linux with a Vulkan driver for at least one GPU. To build, you also nee
 | --- | --- |
 | `build.sh` | `--portable` for a binary that runs on any x86-64 machine, `--debug` for faster compiles, `--clean` |
 | `run.sh` | `--gpu NAME` to choose a GPU, `--list-gpus`, `--no-build` |
-| `install.sh` | `--prefix DIR` (default `~/.local`, or `/usr/local` as root), `--uninstall` |
+| `install.sh` | `--prefix DIR` (default `~/.local`, or `/usr/local` as root; on macOS `~/Applications`), `--uninstall` |
 
 A few details:
 - **Finding Rust:** `build.sh` finds `cargo` even when `~/.cargo/bin` isn't on your `PATH`.
 - **Slow drives:** if the project lives on an NTFS, FAT, exFAT or FUSE drive, build output goes to
-  `~/.cache/landingcraft/target`, because Cargo's many small files are slow on those. Setting
-  `CARGO_TARGET_DIR` overrides this.
+  `~/.cache/landingcraft/target` (`~/Library/Caches/landingcraft/target` on macOS), because Cargo's many
+  small files are slow on those. Setting `CARGO_TARGET_DIR` overrides this.
 - **What `install.sh` adds:** the binary, a desktop entry (`packaging/landingcraft.desktop`) and an icon
   (`packaging/landingcraft.svg`). `--uninstall` removes just those three and leaves your installed apps
   alone.
 
+## macOS
+
+The launcher runs natively on Apple silicon and Intel Macs, drawn with Metal. Mac-only code lives in
+`src/macos.rs` and `packaging/macos/`, and Linux builds don't compile any of it.
+
+**Installing Crafting Apps.** The apps publish `<app>-<version>-macos-universal.dmg`. The launcher
+downloads and checksums it like any other release, mounts it read-only out of sight (no Finder window,
+nothing on the desktop), copies the `.app` out with `ditto` so its code signature and notarization stay
+intact, and unmounts it. Updates, moves and uninstalls then work as on Linux. Downloads made by the launcher
+aren't quarantined, so apps open without a Gatekeeper prompt.
+
+**Building and signing the launcher.** `packaging/macos/package.sh` builds a universal binary, assembles
+`LandingCraft.app`, signs it, and wraps it in a disk image, all under `target/macos/`:
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin   # once, for universal builds
+packaging/macos/package.sh                                   # ad-hoc signed: runs on this Mac only
+packaging/macos/package.sh --sign "Developer ID Application: Your Name (TEAMID)"
+packaging/macos/package.sh --sign "Developer ID Application: Your Name (TEAMID)" --notarize PROFILE
+```
+
+| Option | Effect |
+| --- | --- |
+| `--sign IDENTITY` | Sign the app and disk image with a Developer ID, with the hardened runtime and a secure timestamp. Also read from `MACOS_SIGN_IDENTITY` |
+| `--notarize PROFILE` | Submit the disk image to Apple's notary service, wait, and staple the ticket. `PROFILE` is a keychain profile saved once with `xcrun notarytool store-credentials`. Also read from `MACOS_NOTARY_PROFILE` |
+| `--native` | Build for this Mac's CPU only (quicker; for local use) |
+| `--app-only` | Stop after the `.app` |
+| `--bundle-id ID` | Bundle identifier (default `io.github.rallegretti.landingcraft`) |
+
+Signing needs the Xcode command line tools (`xcode-select --install`). The app icon,
+`packaging/macos/AppIcon.icns`, is rendered from `packaging/landingcraft.svg` by
+`packaging/macos/make-icon.swift`. Rerun that script if the SVG changes.
+
+**Windows** isn't supported yet. The code compiles for Windows, so it doesn't stand in the way, but the
+launcher can't install apps there or open links and folders.
+
 ## Built in Rust
 
 The whole launcher is Rust, and at runtime it starts no other programs except the Crafting Apps you open.
+The one exception is on macOS, where installing a disk image runs the system's own `hdiutil` and `ditto`.
 
 | Area | How |
 | --- | --- |
 | Interface | [egui](https://github.com/emilk/egui) via eframe and winit, with fonts and icons bundled |
-| Graphics | [wgpu](https://wgpu.rs) with **only the Vulkan backend** compiled in |
-| GPU choice | No vendor or power class is preferred: the first hardware device the Vulkan loader lists is used. Override it with `LANDINGCRAFT_GPU=<part of name>` or `./run.sh --gpu` |
+| Graphics | [wgpu](https://wgpu.rs) with **only the Vulkan backend** compiled in (on macOS, **only Metal**) |
+| GPU choice | No vendor or power class is preferred: the first hardware device the Vulkan loader (or Metal) lists is used. Override it with `LANDINGCRAFT_GPU=<part of name>` or `./run.sh --gpu` |
 | HTTPS | [ureq](https://github.com/algesten/ureq) and rustls with the pure-Rust **RustCrypto** provider (no `ring`/`aws-lc` C or assembly), trusting your system's CA certificates |
 | Archives and checksums | `flate2` (miniz_oxide), `tar`, `sha2` |
-| Desktop integration | [zbus](https://github.com/dbus2/zbus) talks to the XDG Desktop Portal (opening links, folder picker) and the file manager directly over D-Bus, instead of running `xdg-open` |
+| Desktop integration | [zbus](https://github.com/dbus2/zbus) talks to the XDG Desktop Portal (opening links, folder picker) and the file manager directly over D-Bus, instead of running `xdg-open`. On macOS, Cocoa's `NSWorkspace` and `NSOpenPanel` through [objc2](https://github.com/madsmtm/objc2), the bindings winit already uses |
 | Title bar | Drawn by the launcher. winit's own Wayland title bars would run `dbus-send`, `gsettings` and `fc-match` |
 
 The release binary links only against the standard C runtime (`libc`, `libm`, `libgcc_s`). The Vulkan
-loader and the Wayland or X11 libraries are loaded from the system when the app starts.
+loader and the Wayland or X11 libraries are loaded from the system when the app starts. On macOS it links
+only against system frameworks.
 
 **Note:** the RustCrypto TLS provider is still alpha software. It's the only all-Rust option today,
 because the mature alternatives include C and assembly.
@@ -191,8 +237,8 @@ cargo test
 ```
 
 The end-to-end installer test downloads about 120 MB from GitHub. It cancels a first install, installs
-PdfCraft as a tarball, converts it to an AppImage, moves it to another folder, then uninstalls it. Run
-it on request:
+PdfCraft as a tarball, converts it to an AppImage, moves it to another folder, then uninstalls it. On
+macOS it installs the disk image instead (about 70 MB). Run it on request:
 
 ```bash
 LC_TEST_DIR=/tmp/lc-test cargo test --release -- --ignored --nocapture
@@ -218,10 +264,13 @@ LANDINGCRAFT_SCREENSHOT=out.png LANDINGCRAFT_DEMO=menu:vectorcraft target/debug/
 | `src/settings.rs` | Install folder, package format and other settings |
 | `src/theme.rs` | Colours, fonts and the custom-painted buttons, pills and glows |
 | `src/detect.rs` | Finding copies installed elsewhere, and launching apps |
-| `src/gpu.rs` | Vulkan-only wgpu setup and GPU selection |
-| `src/portal.rs` | Desktop portal and file manager over D-Bus |
+| `src/gpu.rs` | Single-backend wgpu setup (Vulkan, or Metal on macOS) and GPU selection |
+| `src/desktop.rs` | Opening links, picking folders and showing folders, one implementation per platform |
+| `src/portal.rs` | Linux: desktop portal and file manager over D-Bus |
+| `src/macos.rs` | macOS: Cocoa integration, `.app` bundles and disk images |
 | `src/screenshot.rs` | The development-only screenshot feature |
 | `packaging/` | Desktop entry and app icon |
+| `packaging/macos/` | `Info.plist`, `AppIcon.icns`, and the scripts that build, sign, notarize and install the Mac app |
 | `docs/screenshots/` | Images used in this README |
 
 ## Credits

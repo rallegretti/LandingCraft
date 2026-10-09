@@ -2,6 +2,10 @@
 //! edges. Drawn by the app so the window looks and behaves the same whether or
 //! not the desktop draws title bars (on Wayland, GNOME and others leave it to
 //! the app).
+//!
+//! On macOS the system frame stays, with its traffic-light buttons over the
+//! left end of this bar, so only the bar itself is drawn here: no buttons and
+//! no resize edges.
 
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, CursorIcon, Id, LayerId, Order, PointerButton, Pos2, RawInput, Rect,
@@ -19,6 +23,8 @@ const EDGE: f32 = 5.0;
 /// Length of each arm of the L-shaped corner zones that resize in two directions.
 const CORNER: f32 = 14.0;
 const CLOSE_HOVER: Color32 = Color32::from_rgb(0xd9, 0x3b, 0x3b);
+/// The system draws the window buttons and handles resizing (macOS).
+const SYSTEM_FRAME: bool = cfg!(target_os = "macos");
 
 #[derive(Clone, Copy)]
 enum WindowButton {
@@ -71,6 +77,13 @@ impl Launcher {
         // The whole bar moves the window; buttons added afterwards take precedence.
         let bar = ui.interact(rect, Id::new("titlebar"), Sense::click_and_drag());
         if bar.double_clicked() {
+            #[cfg(target_os = "macos")]
+            match crate::macos::title_double_click() {
+                crate::macos::TitleDoubleClick::Zoom => ctx.send_viewport_cmd(ViewportCommand::Maximized(!is_max)),
+                crate::macos::TitleDoubleClick::Minimize => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
+                crate::macos::TitleDoubleClick::Nothing => {}
+            }
+            #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(ViewportCommand::Maximized(!is_max));
         } else if bar.drag_started_by(PointerButton::Primary) {
             ctx.send_viewport_cmd(ViewportCommand::StartDrag);
@@ -87,6 +100,9 @@ impl Launcher {
         p.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, theme::BORDER));
         p.text(rect.center(), Align2::CENTER_CENTER, title, theme::body(13.0), theme::TEXT_DIM);
 
+        if SYSTEM_FRAME {
+            return;
+        }
         let mut x = rect.right();
         for button in [WindowButton::Close, WindowButton::Maximize, WindowButton::Minimize] {
             let r = Rect::from_min_max(pos2(x - BUTTON_W, rect.top()), pos2(x, rect.bottom() - 1.0));
@@ -121,7 +137,7 @@ impl Launcher {
     /// the strips take precedence over anything underneath.
     pub(super) fn window_edges(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
-        if maximized(&ctx) {
+        if SYSTEM_FRAME || maximized(&ctx) {
             return;
         }
         let r = ui.max_rect();

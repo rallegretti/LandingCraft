@@ -1,6 +1,7 @@
-# Shared setup for build.sh and run.sh. Sourced, not executed.
+# Shared setup for build.sh, run.sh, install.sh and packaging/macos/*.sh. Sourced, not executed.
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OS="$(uname -s)"
 
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -26,15 +27,28 @@ choose_target_dir() {
         TARGET_DIR="$CARGO_TARGET_DIR"
         return
     fi
-    local fstype
-    fstype="$(findmnt -no FSTYPE -T "$PROJECT_DIR" 2>/dev/null || stat -f -c %T "$PROJECT_DIR")"
+    local fstype cache="${XDG_CACHE_HOME:-$HOME/.cache}"
+    if [[ "$OS" == Darwin ]]; then
+        fstype="$(macos_fstype "$PROJECT_DIR")"
+        cache="$HOME/Library/Caches"
+    else
+        fstype="$(findmnt -no FSTYPE -T "$PROJECT_DIR" 2>/dev/null || stat -f -c %T "$PROJECT_DIR")"
+    fi
     case "$fstype" in
-        fuseblk|fuse*|ntfs*|vfat|msdos|exfat)
-            TARGET_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/landingcraft/target" ;;
+        fuseblk|fuse*|*fuse|ntfs*|vfat|msdos|exfat)
+            TARGET_DIR="$cache/landingcraft/target" ;;
         *)
             TARGET_DIR="$PROJECT_DIR/target" ;;
     esac
     export CARGO_TARGET_DIR="$TARGET_DIR"
+}
+
+# macOS: the filesystem type of the volume holding $1 ("apfs", "exfat", "msdos", "macfuse", ...),
+# read from mount's "(type, options)" column, since BSD stat can't report it.
+macos_fstype() {
+    local dev
+    dev="$(df -P "$1" 2>/dev/null | awk 'NR == 2 { print $1 }')" || true
+    mount | awk -v dev="$dev" 'index($0, dev " on ") == 1 { sub(/.*\(/, ""); sub(/[,)].*/, ""); print; exit }' || true
 }
 
 # Remembers the flags of the last build so run.sh rebuilds the same way

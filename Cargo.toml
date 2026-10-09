@@ -9,12 +9,11 @@ license = "CC0-1.0"
 # egui on winit, rendered through wgpu. Default features are off so that no
 # OpenGL/glow path is compiled in.
 eframe = { version = "0.36", default-features = false, features = ["wgpu_no_default_features", "wayland", "x11", "persistence"] }
-# Same wgpu that eframe uses, restricted to the Vulkan backend only.
-wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "vulkan", "wgsl"] }
+# Same wgpu that eframe uses. Exactly one backend is compiled in per platform:
+# Vulkan everywhere except macOS, which gets Metal (see the target sections below).
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 # Pure-Rust WebP decoding for the bundled app icons.
 image = { version = "0.25", default-features = false, features = ["webp"] }
-# Pure-Rust D-Bus: desktop portal (links, folder picker) and the file manager.
-zbus = "5"
 # HTTPS for GitHub releases: rustls with the pure-Rust RustCrypto provider (no
 # ring/aws-lc C or assembly), trusting the system's CA certificates.
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider"] }
@@ -27,6 +26,26 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 tar = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+wgpu = { version = "30", default-features = false, features = ["vulkan"] }
+
+# Linux and the BSDs.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# Pure-Rust D-Bus: desktop portal (links, folder picker) and the file manager.
+zbus = "5"
+
+# macOS only: Metal rendering, and Cocoa (links, folder picker, Finder) through
+# the same objc2 bindings winit already uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu = { version = "30", default-features = false, features = ["metal"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSURL", "NSUserDefaults"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std", "block2", "NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSWindow", "NSWorkspace",
+] }
+block2 = "0.6"
+dispatch2 = "0.3"
 
 [features]
 # Development aid: LANDINGCRAFT_SCREENSHOT=<file.png> saves the window and quits.

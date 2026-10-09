@@ -1,9 +1,10 @@
-//! Vulkan-only wgpu setup with vendor-neutral adapter selection.
+//! Single-backend wgpu setup with vendor-neutral adapter selection: Vulkan,
+//! or Metal on macOS, where Vulkan has no native driver.
 //!
 //! The adapter is chosen without regard to vendor or power class: the first
-//! hardware Vulkan device (in the order the system Vulkan loader reports them)
-//! that can present to the window is used. Set `LANDINGCRAFT_GPU` to a
-//! case-insensitive substring of a device name to pick a specific one.
+//! hardware device (in the order the system reports them) that can present to
+//! the window is used. Set `LANDINGCRAFT_GPU` to a case-insensitive substring
+//! of a device name to pick a specific one.
 
 use std::sync::Arc;
 
@@ -12,9 +13,32 @@ use eframe::wgpu;
 
 pub const GPU_ENV: &str = "LANDINGCRAFT_GPU";
 
+#[cfg(not(target_os = "macos"))]
+const BACKEND: wgpu::Backend = wgpu::Backend::Vulkan;
+#[cfg(target_os = "macos")]
+const BACKEND: wgpu::Backend = wgpu::Backend::Metal;
+
+/// The graphics API in use, for display.
+#[cfg(not(target_os = "macos"))]
+pub const API: &str = "Vulkan";
+#[cfg(target_os = "macos")]
+pub const API: &str = "Metal";
+
+/// What lists the devices, for display ("the first hardware device … reports").
+#[cfg(not(target_os = "macos"))]
+pub const DEVICE_SOURCE: &str = "the Vulkan loader";
+#[cfg(target_os = "macos")]
+pub const DEVICE_SOURCE: &str = "macOS";
+
+#[cfg(not(target_os = "macos"))]
+const NO_DEVICE: &str = "No Vulkan device that can present to this window was found. \
+                         Make sure a Vulkan driver for your GPU is installed.";
+#[cfg(target_os = "macos")]
+const NO_DEVICE: &str = "No Metal device that can present to this window was found.";
+
 pub fn configuration() -> WgpuConfiguration {
     let mut setup = WgpuSetupCreateNew::without_display_handle();
-    setup.instance_descriptor.backends = wgpu::Backends::VULKAN;
+    setup.instance_descriptor.backends = wgpu::Backends::from(BACKEND);
     setup.power_preference = wgpu::PowerPreference::None;
     setup.native_adapter_selector = Some(Arc::new(select_adapter));
 
@@ -30,14 +54,12 @@ fn select_adapter(
 ) -> Result<wgpu::Adapter, String> {
     let usable: Vec<&wgpu::Adapter> = adapters
         .iter()
-        .filter(|a| a.get_info().backend == wgpu::Backend::Vulkan)
+        .filter(|a| a.get_info().backend == BACKEND)
         .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
         .collect();
 
     if usable.is_empty() {
-        return Err("No Vulkan device that can present to this window was found. \
-                    Make sure a Vulkan driver for your GPU is installed."
-            .to_owned());
+        return Err(NO_DEVICE.to_owned());
     }
 
     if let Ok(wanted) = std::env::var(GPU_ENV)
@@ -50,7 +72,7 @@ fn select_adapter(
         {
             return Ok(chosen(a));
         }
-        eprintln!("{GPU_ENV}={wanted:?} matched no Vulkan device; using the default choice");
+        eprintln!("{GPU_ENV}={wanted:?} matched no {API} device; using the default choice");
     }
 
     // Prefer real hardware over software rasterisers (lavapipe, SwiftShader),
@@ -64,6 +86,6 @@ fn select_adapter(
 
 fn chosen(adapter: &wgpu::Adapter) -> wgpu::Adapter {
     let info = adapter.get_info();
-    eprintln!("LandingCraft: rendering with Vulkan on {} ({:?})", info.name, info.device_type);
+    eprintln!("LandingCraft: rendering with {API} on {} ({:?})", info.name, info.device_type);
     adapter.clone()
 }

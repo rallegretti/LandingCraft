@@ -7,7 +7,7 @@ use super::widgets::{ago, bytes, dim, kv, section};
 use crate::catalog::{self, APPS};
 use crate::settings::{self, Format};
 use crate::theme::{self, ButtonKind, button, eyebrow};
-use crate::{detect, gpu};
+use crate::{gpu, releases};
 
 impl Launcher {
     pub(super) fn settings_page(&mut self, ui: &mut Ui) {
@@ -17,8 +17,9 @@ impl Launcher {
         dim(
             ui,
             format!(
-                "Version {} · a native launcher for the Crafting Apps, written in Rust and drawn with Vulkan.",
-                env!("CARGO_PKG_VERSION")
+                "Version {} · a native launcher for the Crafting Apps, written in Rust and drawn with {}.",
+                env!("CARGO_PKG_VERSION"),
+                gpu::API
             ),
         );
         ui.add_space(26.0);
@@ -75,12 +76,13 @@ impl Launcher {
             if resp.clicked() && !locked {
                 self.pick_install_dir();
             }
-            if button(ui, "Show in file manager", ButtonKind::Ghost, false).clicked() {
+            if button(ui, crate::desktop::SHOW_FOLDER, ButtonKind::Ghost, false).clicked() {
                 let dir = self.base().to_path_buf();
                 self.show_folder(&dir);
             }
-            if self.settings.install_dir != settings::default_install_dir()
-                && button(ui, "Reset to ~/.craftapps", ButtonKind::Ghost, false).clicked()
+            let default_dir = settings::default_install_dir();
+            if self.settings.install_dir != default_dir
+                && button(ui, &format!("Reset to {}", settings::display_path(&default_dir)), ButtonKind::Ghost, false).clicked()
                 && !locked
             {
                 self.request_install_dir(settings::default_install_dir());
@@ -108,8 +110,22 @@ impl Launcher {
     }
 
     fn format_choice(&mut self, ui: &mut Ui) {
+        let formats = Format::available();
+        if formats.len() < 2 {
+            // Nothing to choose: describe the one format the apps ship in here.
+            match formats.first() {
+                Some(Format::Dmg) => dim(
+                    ui,
+                    "Crafting Apps for macOS are published as disk images. The launcher opens each one out of \
+                     sight, copies the app inside into its own folder with its signature intact, and closes the \
+                     image again.",
+                ),
+                _ => dim(ui, format!("The launcher can't install Crafting Apps on {} yet.", releases::platform())),
+            }
+            return;
+        }
         ui.horizontal(|ui| {
-            for format in [Format::Tarball, Format::AppImage] {
+            for &format in formats {
                 let kind = if self.settings.format == format { ButtonKind::Solid(theme::BRAND) } else { ButtonKind::Outline };
                 if button(ui, format.label(), kind, false).clicked() && self.settings.format != format {
                     self.settings.format = format;
@@ -123,9 +139,11 @@ impl Launcher {
                 ui,
                 "Each app is unpacked into its own folder. Starts fastest and needs nothing else on the system.",
             ),
+            Format::Dmg => {}
             Format::AppImage => {
                 dim(ui, "Each app is kept as a single self-contained .AppImage file.");
-                if detect::has_fuse2() {
+                #[cfg(all(unix, not(target_os = "macos")))]
+                if crate::detect::has_fuse2() {
                     dim(ui, "FUSE 2 is available, so AppImages mount directly.");
                 } else {
                     dim(
@@ -179,16 +197,25 @@ impl Launcher {
 
     fn window_prefs(&mut self, ui: &mut Ui) {
         let mut native = self.settings.native_title_bar;
-        if ui.checkbox(&mut native, "Use the desktop's title bar").changed() {
+        let (label, about) = if cfg!(target_os = "macos") {
+            (
+                "Use the standard macOS title bar",
+                "By default the launcher draws its own title bar beneath the window buttons, so it looks the same \
+                 everywhere. Turn this on to use the standard macOS title bar instead.",
+            )
+        } else {
+            (
+                "Use the desktop's title bar",
+                "By default the launcher draws its own title bar, so it looks the same everywhere. Turn this on to \
+                 use your desktop's instead. Only do this if your desktop draws title bars for apps: KDE Plasma, \
+                 Xfce and most X11 window managers do, GNOME on Wayland doesn't.",
+            )
+        };
+        if ui.checkbox(&mut native, label).changed() {
             self.settings.native_title_bar = native;
             self.save_settings();
         }
-        dim(
-            ui,
-            "By default the launcher draws its own title bar, so it looks the same everywhere. Turn this on to \
-             use your desktop's instead. Only do this if your desktop draws title bars for apps: KDE Plasma, \
-             Xfce and most X11 window managers do, GNOME on Wayland doesn't.",
-        );
+        dim(ui, about);
         if native != !self.custom_frame {
             ui.label(
                 RichText::new("Takes effect the next time LandingCraft starts.")
@@ -209,7 +236,7 @@ impl Launcher {
         let driver = format!("{} {}", gpu.active.driver, gpu.active.driver_info);
         kv(ui, "Driver", driver.trim());
         ui.add_space(10.0);
-        ui.label(RichText::new("Vulkan devices on this system").font(theme::semibold(14.0)));
+        ui.label(RichText::new(format!("{} devices on this system", gpu::API)).font(theme::semibold(14.0)));
         for info in &gpu.all {
             let active = info.name == gpu.active.name && info.device == gpu.active.device;
             ui.horizontal(|ui| {
@@ -224,8 +251,9 @@ impl Launcher {
         dim(
             ui,
             format!(
-                "No vendor or power class is preferred: the first hardware device the Vulkan loader reports is \
+                "No vendor or power class is preferred: the first hardware device {} reports is \
                  used. To choose another, start the launcher with {}=<part of the device name>.",
+                gpu::DEVICE_SOURCE,
                 gpu::GPU_ENV
             ),
         );
