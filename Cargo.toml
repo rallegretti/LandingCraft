@@ -11,6 +11,7 @@ license = "CC0-1.0"
 eframe = { version = "0.36", default-features = false, features = ["wgpu_no_default_features", "wayland", "x11", "persistence"] }
 # Same wgpu that eframe uses. Exactly one backend is compiled in per platform:
 # Vulkan everywhere except macOS, which gets Metal (see the target sections below).
+# Windows uses Vulkan too, through the GPU vendor's driver.
 wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 # Pure-Rust WebP decoding for the bundled app icons.
 image = { version = "0.25", default-features = false, features = ["webp"] }
@@ -46,6 +47,14 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 ] }
 block2 = "0.6"
 dispatch2 = "0.3"
+
+# Windows only: the shell (links, folder picker, Explorer) through the same windows crate wgpu
+# uses, and the apps' portable .zip releases (deflate only, through flate2's miniz_oxide).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging",
+] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [features]
 # Development aid: LANDINGCRAFT_SCREENSHOT=<file.png> saves the window and quits.

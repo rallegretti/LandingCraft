@@ -121,11 +121,21 @@ pub fn arch() -> &'static str {
     }
 }
 
-/// "Linux x86_64", "macOS" (the Mac builds are universal), and so on.
+/// The CPU as Windows release files name it: x64, x86 or arm64.
+pub fn windows_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "x86" => "x86",
+        "aarch64" => "arm64",
+        other => other,
+    }
+}
+
+/// "Linux x86_64", "macOS" (the Mac builds are universal), "Windows x64", and so on.
 pub fn platform() -> String {
     match std::env::consts::OS {
         "macos" => "macOS".to_owned(),
-        "windows" => format!("Windows {}", arch()),
+        "windows" => format!("Windows {}", windows_arch()),
         _ => format!("Linux {}", arch()),
     }
 }
@@ -139,6 +149,7 @@ pub fn asset_name(id: &str, version: &Version, format: Format) -> Option<String>
         Format::Tarball => format!("{id}-{version}-linux-{}.tar.gz", arch()),
         Format::AppImage => format!("{id}-{version}-linux-{}.AppImage", arch()),
         Format::Dmg => format!("{id}-{version}-macos-universal.dmg"),
+        Format::Zip => format!("{id}-{version}-windows-{}-portable.zip", windows_arch()),
     })
 }
 
@@ -318,5 +329,30 @@ mod tests {
             assert_eq!(c.asset.name, "x-0.9.0-macos-universal.dmg");
         }
         assert!(latest_compatible("y", &releases, Format::Dmg).is_none());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn picks_newest_windows_release() {
+        let w = windows_arch();
+        let other = if w == "arm64" { "x64" } else { "arm64" };
+        let releases: Vec<Release> = [
+            gh("v0.10.0", false, &["x-0.10.0-macos-universal.dmg", &format!("x-0.10.0-windows-{w}.msi")]),
+            gh("v0.9.0", false, &[&format!("x-0.9.0-windows-{other}-portable.zip")]),
+            gh("v0.8.0", false, &[&format!("x-0.8.0-windows-{w}.msi"), &format!("x-0.8.0-windows-{w}-portable.zip")]),
+            gh("v0.11.0-rc.1", false, &[&format!("x-0.11.0-rc.1-windows-{w}-portable.zip")]),
+        ]
+        .into_iter()
+        .filter_map(stable)
+        .collect();
+
+        // 0.10.0 only has an MSI, which the launcher can't manage; 0.9.0 is for another CPU.
+        // A Linux format left in the settings still finds the zip.
+        for preferred in [Format::Zip, Format::Tarball] {
+            let c = latest_compatible("x", &releases, preferred).unwrap();
+            assert_eq!((c.release.version.to_string(), c.format), ("0.8.0".to_owned(), Format::Zip));
+            assert_eq!(c.asset.name, format!("x-0.8.0-windows-{w}-portable.zip"));
+        }
+        assert!(latest_compatible("y", &releases, Format::Zip).is_none());
     }
 }

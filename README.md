@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Pure Rust</b> · <b>Vulkan</b> / <b>Metal</b> · <b>Linux</b> · <b>macOS</b> · stable releases only · checksum-verified installs
+  <b>Pure Rust</b> · <b>Vulkan</b> / <b>Metal</b> · <b>Linux</b> · <b>macOS</b> · <b>Windows</b> · stable releases only · checksum-verified installs
 </p>
 
 ![The LandingCraft library, with three apps installed and an update available for VectorCraft](docs/screenshots/library.webp)
@@ -23,6 +23,7 @@
 - [How installs work](#how-installs-work)
 - [Getting started](#getting-started)
 - [macOS](#macos)
+- [Windows](#windows)
 - [Linux releases](#linux-releases)
 - [Publishing a release](#publishing-a-release)
 - [Built in Rust](#built-in-rust)
@@ -93,8 +94,8 @@ be uninstalled, updated or moved until you close it.
 ![Settings: installations, package format, updates and window](docs/screenshots/settings.webp)
 
 - **Installations.** Apps install to `~/.craftapps` by default (on macOS, `~/Applications/Crafting Apps`,
-  so Spotlight and Launchpad find them). **Change location…** opens your desktop's folder picker, or you
-  can type a path. Installed apps move with the folder: renamed on the
+  so Spotlight and Launchpad find them; on Windows, `%LOCALAPPDATA%\Programs\Crafting Apps`).
+  **Change location…** opens your desktop's folder picker, or you can type a path. Installed apps move with the folder: renamed on the
   same drive, or copied then deleted across drives. If anything fails partway, the apps already moved
   are put back.
 
@@ -104,14 +105,15 @@ be uninstalled, updated or moved until you close it.
   **AppImage** keeps each app as one self-contained file, and runs it with FUSE 2 when available, or by
   unpacking first. The choice applies to new installs and updates. **Reinstall** converts an app that's
   already installed. If a release lacks the chosen format, the other one is used. On macOS the apps ship
-  only as disk images, so there's nothing to choose (see [macOS](#macos)).
+  only as disk images and on Windows as portable zips, so there's nothing to choose (see [macOS](#macos)
+  and [Windows](#windows)).
 - **Updates.** The launcher checks at startup and every six hours while open, and you can turn this
   off. **Check now** runs a check straight away.
 - **Window.** The launcher draws its own title bar so it looks the same on every desktop (see
   [Built in Rust](#built-in-rust)). On desktops that draw title bars for apps, such as KDE Plasma,
   Xfce and most X11 window managers, **Use the desktop's title bar** switches to the native one from the
   next start. On macOS the system's window buttons stay, over the launcher's bar, and **Use the standard
-  macOS title bar** brings back the usual one.
+  macOS title bar** brings back the usual one. On Windows, **Use the standard Windows title bar** does the same.
 - **Graphics.** Shows the GPU in use and lists every Vulkan (or, on macOS, Metal) device the system offers.
 
 ## How installs work
@@ -120,7 +122,8 @@ be uninstalled, updated or moved until you close it.
 ~/.craftapps/
   photocraft/
     craftapp.json                      # manifest: version, format, checksum, executable
-    photocraft-0.5.0-linux-x86_64/     # unpacked tarball (or a single .AppImage file, or PhotoCraft.app on macOS)
+    photocraft-0.5.0-linux-x86_64/     # unpacked tarball (or a single .AppImage file, PhotoCraft.app on macOS,
+                                       # or photocraft-0.5.0-windows-x64-portable\ on Windows)
   vectorcraft/
     ...
 ```
@@ -139,19 +142,22 @@ be uninstalled, updated or moved until you close it.
 - **Movable.** Paths in each manifest are relative, so the whole install folder can be relocated.
 - **Copies installed elsewhere** are still found and can be opened. The launcher looks on `$PATH` and in
   `~/.local/bin`, `~/.cargo/bin`, `~/Applications`, `~/AppImages`, `~/Downloads`, `~/bin` and `/opt`.
-  On macOS it looks for `<App>.app` in `/Applications` and `~/Applications`. Its own managed copy always
-  takes priority.
+  On macOS it looks for `<App>.app` in `/Applications` and `~/Applications`. On Windows it looks for
+  `<app>.exe` on `PATH`, in Program Files (where the apps' MSIs install), and in unzipped release folders in
+  your Downloads, Desktop and `Apps` folders. Its own managed copy always takes priority.
 
 Settings are stored in `~/.config/landingcraft/settings.json`, and the release-list cache in
 `~/.cache/landingcraft/releases.json`. On macOS they're in `~/Library/Application Support/landingcraft/`
-and `~/Library/Caches/landingcraft/`.
+and `~/Library/Caches/landingcraft/`, and on Windows in `%APPDATA%\landingcraft\` and
+`%LOCALAPPDATA%\landingcraft\`.
 
 ## Getting started
 
-You need Linux with a Vulkan driver for at least one GPU, or macOS 11 or later. To build, you also need
-[Rust](https://rustup.rs). Nothing else is required, because the launcher compiles no C or C++ code.
-The scripts work the same way on both; on a Mac, `install.sh` puts `LandingCraft.app` in
-`~/Applications` (see [macOS](#macos)).
+You need Linux or Windows 10/11 with a Vulkan driver for at least one GPU, or macOS 11 or later. To build,
+you also need [Rust](https://rustup.rs). Nothing else is required on Linux and macOS, because the launcher
+compiles no C or C++ code; Windows builds need MinGW-w64's tools too (see [Windows](#windows)).
+The scripts work the same way on Linux and macOS; on a Mac, `install.sh` puts `LandingCraft.app` in
+`~/Applications` (see [macOS](#macos)). On Windows, run `build.sh` and `run.sh` from Git Bash.
 
 ```bash
 ./build.sh     # optimised release build for this CPU
@@ -207,6 +213,40 @@ Signing needs the Xcode command line tools (`xcode-select --install`). The app i
 `packaging/macos/AppIcon.icns`, is rendered from `packaging/landingcraft.svg` by
 `packaging/macos/make-icon.swift`. Rerun that script if the SVG changes.
 
+## Windows
+
+The launcher runs on Windows 10 and 11, drawn with Vulkan like on Linux, so it needs the Vulkan driver
+that comes with the GPU's own driver (NVIDIA, AMD and Intel all include one). Without it, the launcher
+says so in a message box and quits: that includes most virtual machines. Windows-only code lives in
+`src/win.rs` and `packaging/windows/`, and other platforms don't compile any of it.
+
+**Installing Crafting Apps.** The apps publish `<app>-<version>-windows-<arch>-portable.zip` alongside
+their MSIs. The launcher installs the zip, which it can manage like a tarball: checksummed, unpacked
+into its own folder under the same rules (plus no names Windows treats specially, such as `CON` or
+`a:b`), and swapped in when complete. The zips ship a `portable.txt` that makes an app keep its
+settings beside its executable, where the next update would replace them, so the launcher removes it:
+apps it installs keep their settings in your profile, as MSI installs do. Links, the folder picker and
+**Show in Explorer** go through the Windows shell.
+
+**Building.** Use Rust's GNU toolchain, which needs no Visual Studio, plus
+[MinGW-w64](https://winlibs.com) for its `dlltool` (which the `windows` crates need) and `windres`
+(which embeds the icon and version info, see `build.rs`). The scripts run in Git Bash, which comes
+with [Git for Windows](https://gitforwindows.org), and find WinLibs where winget installs it:
+
+```bash
+winget install Rustlang.Rustup BrechtSanders.WinLibs.POSIX.MSVCRT   # once
+rustup default stable-x86_64-pc-windows-gnu                         # once
+./run.sh                                                            # build and launch
+packaging/windows/package.sh                                        # the release zip
+```
+
+`packaging/windows/package.sh` builds `landingcraft-<version>-windows-<arch>.zip` under
+`target/windows/`, holding `landingcraft.exe` with the README and licence. The exe links the C runtime
+statically, so it needs only DLLs that come with Windows, and opens no console window. The script
+checks both before zipping. It isn't code-signed, so Windows SmartScreen asks before the first run.
+The app icon, `packaging/windows/landingcraft.ico`, is made from `packaging/macos/AppIcon.icns` by
+`packaging/windows/make-icon.py`. Rerun that script if the icon changes.
+
 ## Linux releases
 
 `packaging/linux/package.sh` builds the two Linux release files, under `target/linux/`:
@@ -244,6 +284,8 @@ packaging/macos/package.sh --sign "…" --notarize PROFILE   # on the Mac
 ./release.sh target/macos/landingcraft-<version>-macos-universal.dmg
 packaging/linux/package.sh                                 # on Linux
 ./release.sh target/linux/landingcraft-<version>-linux-x86_64.{tar.gz,AppImage}
+packaging/windows/package.sh                               # on Windows, in Git Bash
+./release.sh target/windows/landingcraft-<version>-windows-x64.zip
 ./release.sh --publish                                     # when every platform is up
 ```
 
@@ -251,9 +293,6 @@ A platform can also be added after publishing: check out the release's tag (`git
 build, and upload as usual. The script refuses uncommitted or unpushed code, a commit other than the
 release's, files not named for the current version, a disk image that isn't notarized, and replacing a
 file that's already published. Bump `version` in `Cargo.toml` for each new release.
-
-**Windows** isn't supported yet. The code compiles for Windows, so it doesn't stand in the way, but the
-launcher can't install apps there or open links and folders.
 
 ## Built in Rust
 
@@ -266,13 +305,14 @@ The one exception is on macOS, where installing a disk image runs the system's o
 | Graphics | [wgpu](https://wgpu.rs) with **only the Vulkan backend** compiled in (on macOS, **only Metal**) |
 | GPU choice | No vendor or power class is preferred: the first hardware device the Vulkan loader (or Metal) lists is used. Override it with `LANDINGCRAFT_GPU=<part of name>` or `./run.sh --gpu` |
 | HTTPS | [ureq](https://github.com/algesten/ureq) and rustls with the pure-Rust **RustCrypto** provider (no `ring`/`aws-lc` C or assembly), trusting your system's CA certificates |
-| Archives and checksums | `flate2` (miniz_oxide), `tar`, `sha2` |
-| Desktop integration | [zbus](https://github.com/dbus2/zbus) talks to the XDG Desktop Portal (opening links, folder picker) and the file manager directly over D-Bus, instead of running `xdg-open`. On macOS, Cocoa's `NSWorkspace` and `NSOpenPanel` through [objc2](https://github.com/madsmtm/objc2), the bindings winit already uses |
+| Archives and checksums | `flate2` (miniz_oxide), `tar`, `sha2`; on Windows also `zip`, deflate only, through the same miniz_oxide |
+| Desktop integration | [zbus](https://github.com/dbus2/zbus) talks to the XDG Desktop Portal (opening links, folder picker) and the file manager directly over D-Bus, instead of running `xdg-open`. On macOS, Cocoa's `NSWorkspace` and `NSOpenPanel` through [objc2](https://github.com/madsmtm/objc2), the bindings winit already uses. On Windows, the shell's `ShellExecuteW` and `IFileOpenDialog` through the [windows](https://github.com/microsoft/windows-rs) crate wgpu already uses |
 | Title bar | Drawn by the launcher. winit's own Wayland title bars would run `dbus-send`, `gsettings` and `fc-match` |
 
 The release binary links only against the standard C runtime (`libc`, `libm`, `libgcc_s`). The Vulkan
 loader and the Wayland or X11 libraries are loaded from the system when the app starts. On macOS it links
-only against system frameworks.
+only against system frameworks, and on Windows only against DLLs that come with Windows (the C runtime is
+linked in statically, and the Vulkan loader is loaded at startup).
 
 **Note:** the RustCrypto TLS provider is still alpha software. It's the only all-Rust option today,
 because the mature alternatives include C and assembly.
@@ -285,7 +325,8 @@ cargo test
 
 The end-to-end installer test downloads about 120 MB from GitHub. It cancels a first install, installs
 PdfCraft as a tarball, converts it to an AppImage, moves it to another folder, then uninstalls it. On
-macOS it installs the disk image instead (about 70 MB). Run it on request:
+macOS it installs the disk image instead (about 70 MB), and on Windows the portable zip (about 55 MB).
+Run it on request:
 
 ```bash
 LC_TEST_DIR=/tmp/lc-test cargo test --release -- --ignored --nocapture
@@ -315,10 +356,13 @@ LANDINGCRAFT_SCREENSHOT=out.png LANDINGCRAFT_DEMO=menu:vectorcraft target/debug/
 | `src/desktop.rs` | Opening links, picking folders and showing folders, one implementation per platform |
 | `src/portal.rs` | Linux: desktop portal and file manager over D-Bus |
 | `src/macos.rs` | macOS: Cocoa integration, `.app` bundles and disk images |
+| `src/win.rs` | Windows: shell integration (links, folder picker, Explorer) and the startup error message |
 | `src/screenshot.rs` | The development-only screenshot feature |
 | `packaging/` | Desktop entry and app icon |
 | `packaging/macos/` | `Info.plist`, `AppIcon.icns`, and the scripts that build, sign, notarize and install the Mac app |
 | `packaging/linux/` | The script that builds the Linux release tarball and AppImage |
+| `packaging/windows/` | The script that builds the Windows release zip, and the app icon with the script that makes it |
+| `build.rs` | Windows: embeds the icon and version info in the exe |
 | `docs/screenshots/` | Images used in this README |
 
 ## Credits

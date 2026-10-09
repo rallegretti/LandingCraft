@@ -1,13 +1,26 @@
 //! Desktop integration, one implementation per platform: opening web links,
 //! choosing a folder, and showing a folder in the file manager. The XDG
-//! Desktop Portal over D-Bus on Linux (`portal.rs`), Cocoa on macOS (`macos.rs`).
+//! Desktop Portal over D-Bus on Linux (`portal.rs`), Cocoa on macOS (`macos.rs`),
+//! the Windows shell on Windows (`win.rs`).
 
 use std::path::{Path, PathBuf};
 
 /// Label for the button that shows a folder.
-pub const SHOW_FOLDER: &str = if cfg!(target_os = "macos") { "Show in Finder" } else { "Show in file manager" };
+pub const SHOW_FOLDER: &str = if cfg!(target_os = "macos") {
+    "Show in Finder"
+} else if cfg!(windows) {
+    "Show in Explorer"
+} else {
+    "Show in file manager"
+};
 /// The file manager, for messages ("Couldn't open …").
-pub const FILE_MANAGER: &str = if cfg!(target_os = "macos") { "Finder" } else { "the file manager" };
+pub const FILE_MANAGER: &str = if cfg!(target_os = "macos") {
+    "Finder"
+} else if cfg!(windows) {
+    "File Explorer"
+} else {
+    "the file manager"
+};
 
 #[cfg(all(unix, not(target_os = "macos")))]
 mod imp {
@@ -29,8 +42,11 @@ mod imp {
 #[cfg(target_os = "macos")]
 use crate::macos as imp;
 
+#[cfg(windows)]
+use crate::win as imp;
+
 /// Not implemented elsewhere yet. Callers fall back to copying the link or path.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 mod imp {
     use super::*;
 

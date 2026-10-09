@@ -1,5 +1,8 @@
 //! LandingCraft — a native launcher for the ArtCraft Crafting Apps.
 
+// Release builds on Windows are GUI programs, so no console window opens with them.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod catalog;
 mod desktop;
@@ -15,6 +18,8 @@ mod releases;
 mod screenshot;
 mod settings;
 mod theme;
+#[cfg(windows)]
+mod win;
 
 use eframe::egui;
 
@@ -51,9 +56,19 @@ fn main() -> eframe::Result {
         None => options,
     };
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "LandingCraft",
         options,
         Box::new(|cc| Ok(Box::new(app::Launcher::new(cc)))),
-    )
+    );
+    #[cfg(windows)]
+    if let Err(e) = &result {
+        match e {
+            eframe::Error::Wgpu(_) => win::startup_error(&format!("{}
+
+({e})", gpu::NO_DEVICE)),
+            _ => win::startup_error(&e.to_string()),
+        }
+    }
+    result
 }

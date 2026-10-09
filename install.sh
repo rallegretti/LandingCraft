@@ -10,6 +10,8 @@
 set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/scripts/common.sh"
 [[ "$OS" == Darwin ]] && exec "$PROJECT_DIR/packaging/macos/install.sh" "$@"
+[[ "$WINDOWS" == 1 ]] \
+    && die "there's no installer for Windows yet; unzip a release anywhere and run landingcraft.exe, or use ./run.sh."
 
 PREFIX="$HOME/.local"
 UNINSTALL=0

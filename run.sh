@@ -30,7 +30,8 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[[ "$OS" == Darwin || -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] || die "no graphical session found (neither WAYLAND_DISPLAY nor DISPLAY is set)."
+[[ "$OS" == Darwin || "$WINDOWS" == 1 || -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]] \
+    || die "no graphical session found (neither WAYLAND_DISPLAY nor DISPLAY is set)."
 
 choose_target_dir
 
@@ -45,7 +46,7 @@ if [[ "$BUILD" == 1 ]]; then
     "$PROJECT_DIR/build.sh" "${flags[@]}"
 fi
 
-BIN="$TARGET_DIR/$PROFILE/landingcraft"
+BIN="$TARGET_DIR/$PROFILE/landingcraft$EXE"
 [[ -x "$BIN" ]] || die "$BIN not found; run ./build.sh first."
 
 exec "$BIN"

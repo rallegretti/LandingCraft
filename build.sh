@@ -25,12 +25,16 @@ for arg in "$@"; do
 done
 
 find_cargo
+find_mingw
 choose_target_dir
 cd "$PROJECT_DIR"
 
 # Vulkan is loaded at runtime, so its absence doesn't stop the build, but say so early.
 # (macOS renders with Metal, which every supported Mac has.)
-if [[ "$OS" != Darwin ]] && ! ldconfig -p 2>/dev/null | grep 'libvulkan\.so\.1' >/dev/null; then
+if [[ "$WINDOWS" == 1 ]]; then
+    [[ -f "$(cygpath -u "${SYSTEMROOT:-C:/Windows}")/System32/vulkan-1.dll" ]] \
+        || warn "vulkan-1.dll not found; the launcher needs a Vulkan driver for your GPU to run (GPU drivers include one)."
+elif [[ "$OS" != Darwin ]] && ! ldconfig -p 2>/dev/null | grep 'libvulkan\.so\.1' >/dev/null; then
     warn "libvulkan.so.1 not found; the launcher needs a Vulkan loader and driver to run (e.g. libvulkan1 + mesa-vulkan-drivers)."
 fi
 
@@ -53,4 +57,4 @@ info "Building $PROFILE ($([[ $PORTABLE == 1 ]] && echo portable || echo "native
 mkdir -p "$TARGET_DIR"
 printf 'PROFILE=%s\nPORTABLE=%s\n' "$PROFILE" "$PORTABLE" > "$(build_conf)"
 
-info "Built $TARGET_DIR/$PROFILE/landingcraft"
+info "Built $TARGET_DIR/$PROFILE/landingcraft$EXE"

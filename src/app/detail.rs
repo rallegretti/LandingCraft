@@ -221,6 +221,8 @@ impl Launcher {
             let edit = egui::TextEdit::singleline(&mut self.path_edit[idx])
                 .hint_text(if cfg!(target_os = "macos") {
                     format!("e.g. /Applications/{}.app", app.name())
+                } else if cfg!(windows) {
+                    format!(r"e.g. C:\Program Files\{}\{}.exe", app.name(), app.id)
                 } else {
                     format!("e.g. ~/Applications/{}.AppImage", app.id)
                 })

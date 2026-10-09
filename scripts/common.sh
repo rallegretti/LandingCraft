@@ -1,7 +1,12 @@
-# Shared setup for build.sh, run.sh, install.sh and packaging/macos/*.sh. Sourced, not executed.
+# Shared setup for build.sh, run.sh, install.sh, release.sh and packaging/*/*.sh. Sourced, not executed.
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OS="$(uname -s)"
+# Windows, in Git Bash or MSYS2: uname -s says MINGW64_NT-…, MSYS_NT-… or similar.
+case "$OS" in
+    MINGW*|MSYS*|CYGWIN*) WINDOWS=1; EXE=.exe ;;
+    *)                    WINDOWS=0; EXE= ;;
+esac
 
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -19,12 +24,35 @@ find_cargo() {
     fi
 }
 
+# Windows with Rust's GNU toolchain: the windows crates need MinGW-w64's dlltool, and the
+# icon needs its windres. rustup's own MinGW files lack both (dlltool needs an assembler),
+# so use the ones on PATH, else find WinLibs where winget installs it, or MSYS2's.
+find_mingw() {
+    [[ "$WINDOWS" == 1 ]] || return 0
+    [[ "$("$(dirname "$CARGO")/rustc" -vV | sed -n 's/^host: //p')" == *-gnu ]] || return 0
+    command -v dlltool >/dev/null 2>&1 && command -v windres >/dev/null 2>&1 && return 0
+    local dir local_app_data
+    local_app_data="$(cygpath -u "${LOCALAPPDATA:-$USERPROFILE/AppData/Local}")"
+    for dir in "$local_app_data"/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.*/mingw64/bin /c/msys64/mingw64/bin; do
+        if [[ -x "$dir/dlltool.exe" && -x "$dir/windres.exe" ]]; then
+            export PATH="$dir:$PATH"
+            return 0
+        fi
+    done
+    die "MinGW-w64 (dlltool and windres) not found. Install it with: winget install BrechtSanders.WinLibs.POSIX.MSVCRT"
+}
+
 # Cargo writes thousands of small files; on NTFS/FAT/exFAT (often mounted via
 # FUSE) that is slow, so keep build output on the home filesystem instead.
-# An explicit CARGO_TARGET_DIR always wins.
+# On Windows, NTFS is the home filesystem. An explicit CARGO_TARGET_DIR always wins.
 choose_target_dir() {
     if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
         TARGET_DIR="$CARGO_TARGET_DIR"
+        return
+    fi
+    if [[ "$WINDOWS" == 1 ]]; then
+        TARGET_DIR="$PROJECT_DIR/target"
+        export CARGO_TARGET_DIR="$TARGET_DIR"
         return
     fi
     local fstype cache="${XDG_CACHE_HOME:-$HOME/.cache}"

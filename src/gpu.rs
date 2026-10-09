@@ -31,10 +31,10 @@ pub const DEVICE_SOURCE: &str = "the Vulkan loader";
 pub const DEVICE_SOURCE: &str = "macOS";
 
 #[cfg(not(target_os = "macos"))]
-const NO_DEVICE: &str = "No Vulkan device that can present to this window was found. \
-                         Make sure a Vulkan driver for your GPU is installed.";
+pub const NO_DEVICE: &str = "No Vulkan device that can present to this window was found. \
+                             Make sure a Vulkan driver for your GPU is installed.";
 #[cfg(target_os = "macos")]
-const NO_DEVICE: &str = "No Metal device that can present to this window was found.";
+pub const NO_DEVICE: &str = "No Metal device that can present to this window was found.";
 
 pub fn configuration() -> WgpuConfiguration {
     let mut setup = WgpuSetupCreateNew::without_display_handle();

@@ -1,5 +1,6 @@
 //! Launcher settings, stored as JSON in `$XDG_CONFIG_HOME/landingcraft/settings.json`
-//! (on macOS, `~/Library/Application Support/landingcraft/settings.json`).
+//! (on macOS, `~/Library/Application Support/landingcraft/settings.json`; on Windows,
+//! `%APPDATA%\landingcraft\settings.json`).
 //!
 //! These are written immediately on every change (not on exit like the UI state),
 //! because the install location must never get out of step with where apps are.
@@ -18,6 +19,8 @@ pub enum Format {
     AppImage,
     /// `<app>-<version>-macos-universal.dmg`, whose `.app` bundle is copied out.
     Dmg,
+    /// `<app>-<version>-windows-<arch>-portable.zip`, unpacked into the install folder.
+    Zip,
 }
 
 impl Default for Format {
@@ -32,14 +35,18 @@ impl Format {
             Format::Tarball => "Tarball",
             Format::AppImage => "AppImage",
             Format::Dmg => "Disk image",
+            Format::Zip => "Portable zip",
         }
     }
 
     /// The formats the Crafting Apps publish for this OS, the default first.
-    /// Empty where the launcher can't install apps yet (Windows).
+    /// Empty where the launcher can't install apps yet.
     pub fn available() -> &'static [Format] {
         if cfg!(target_os = "macos") {
             &[Format::Dmg]
+        } else if cfg!(windows) {
+            // The apps' MSIs install system-wide, outside any folder the launcher could manage.
+            &[Format::Zip]
         } else if cfg!(unix) {
             &[Format::Tarball, Format::AppImage]
         } else {
@@ -76,15 +83,21 @@ impl Default for Settings {
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
+    // On Windows, USERPROFILE first: shells such as Git Bash set HOME too, not always to the profile.
+    let vars = if cfg!(windows) { ["USERPROFILE", "HOME"] } else { ["HOME", "USERPROFILE"] };
+    vars.iter()
+        .find_map(|v| std::env::var_os(v).filter(|p| !p.is_empty()))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// `~/.craftapps`. On macOS, `~/Applications/Crafting Apps` instead, so that
-/// Spotlight and Launchpad find the installed apps.
+/// Spotlight and Launchpad find the installed apps. On Windows,
+/// `%LOCALAPPDATA%\Programs\Crafting Apps`, where per-user programs go.
 pub fn default_install_dir() -> PathBuf {
+    #[cfg(windows)]
+    return local_app_data().join("Programs").join("Crafting Apps");
+    #[cfg(not(windows))]
     if cfg!(target_os = "macos") {
         home().join("Applications").join("Crafting Apps")
     } else {
@@ -92,7 +105,21 @@ pub fn default_install_dir() -> PathBuf {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+/// `%LOCALAPPDATA%` (Windows), falling back to its usual place in the profile.
+#[cfg(windows)]
+fn local_app_data() -> PathBuf {
+    known_folder("LOCALAPPDATA", r"AppData\Local")
+}
+
+#[cfg(windows)]
+fn known_folder(var: &str, fallback: &str) -> PathBuf {
+    std::env::var_os(var)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home().join(fallback))
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 fn xdg(var: &str, fallback: &str) -> PathBuf {
     std::env::var_os(var)
         .map(PathBuf::from)
@@ -100,14 +127,26 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
         .unwrap_or_else(|| home().join(fallback))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 pub fn config_dir() -> PathBuf {
     xdg("XDG_CONFIG_HOME", ".config").join("landingcraft")
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("landingcraft")
+}
+
+/// `%APPDATA%\landingcraft`, which roams with the user's profile.
+#[cfg(windows)]
+pub fn config_dir() -> PathBuf {
+    known_folder("APPDATA", r"AppData\Roaming").join("landingcraft")
+}
+
+/// `%LOCALAPPDATA%\landingcraft`, which stays on this machine.
+#[cfg(windows)]
+pub fn cache_dir() -> PathBuf {
+    local_app_data().join("landingcraft")
 }
 
 #[cfg(target_os = "macos")]
@@ -160,12 +199,16 @@ pub fn display_path(path: &Path) -> String {
 /// Expand a leading `~` and require an absolute path.
 pub fn parse_user_path(raw: &str) -> Option<PathBuf> {
     let raw = raw.trim();
+    let tilde = raw.strip_prefix("~/").or_else(|| if cfg!(windows) { raw.strip_prefix("~\\") } else { None });
     let path = if raw == "~" {
         home()
-    } else if let Some(rest) = raw.strip_prefix("~/") {
+    } else if let Some(rest) = tilde {
         home().join(rest)
     } else {
         PathBuf::from(raw)
     };
     path.is_absolute().then_some(path)
 }
+
+/// An example absolute path, for hints.
+pub const EXAMPLE_DIR: &str = if cfg!(windows) { r"D:\Apps\craft" } else { "~/Apps/craft" };

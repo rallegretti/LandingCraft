@@ -103,7 +103,7 @@ impl Launcher {
             if (button(ui, "Use folder", ButtonKind::Ghost, false).clicked() || submit) && !locked {
                 match settings::parse_user_path(&self.dir_edit) {
                     Some(p) => self.request_install_dir(p),
-                    None => self.toast("Enter an absolute path, e.g. ~/Apps/craft"),
+                    None => self.toast(format!("Enter an absolute path, e.g. {}", settings::EXAMPLE_DIR)),
                 }
             }
         });
@@ -119,6 +119,12 @@ impl Launcher {
                     "Crafting Apps for macOS are published as disk images. The launcher opens each one out of \
                      sight, copies the app inside into its own folder with its signature intact, and closes the \
                      image again.",
+                ),
+                Some(Format::Zip) => dim(
+                    ui,
+                    "Crafting Apps for Windows are published as portable zip files. The launcher unpacks each one \
+                     into its own folder, and the apps keep their settings in your user profile, so updates and \
+                     moves never touch them.",
                 ),
                 _ => dim(ui, format!("The launcher can't install Crafting Apps on {} yet.", releases::platform())),
             }
@@ -139,7 +145,7 @@ impl Launcher {
                 ui,
                 "Each app is unpacked into its own folder. Starts fastest and needs nothing else on the system.",
             ),
-            Format::Dmg => {}
+            Format::Dmg | Format::Zip => {}
             Format::AppImage => {
                 dim(ui, "Each app is kept as a single self-contained .AppImage file.");
                 #[cfg(all(unix, not(target_os = "macos")))]
@@ -202,6 +208,12 @@ impl Launcher {
                 "Use the standard macOS title bar",
                 "By default the launcher draws its own title bar beneath the window buttons, so it looks the same \
                  everywhere. Turn this on to use the standard macOS title bar instead.",
+            )
+        } else if cfg!(windows) {
+            (
+                "Use the standard Windows title bar",
+                "By default the launcher draws its own title bar, so it looks the same everywhere. Turn this on to \
+                 use the standard Windows title bar and window frame instead.",
             )
         } else {
             (

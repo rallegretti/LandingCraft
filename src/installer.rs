@@ -1,6 +1,7 @@
 //! Managed installations: `<install dir>/<app id>/` holds the payload (an
 //! unpacked release folder, an AppImage, or on macOS an `.app` bundle) plus a
-//! `craftapp.json` manifest.
+//! `craftapp.json` manifest. On Windows the release folder comes from a
+//! portable zip instead of a tarball.
 //! Paths in the manifest are relative to the app folder, so the whole install
 //! folder can be moved.
 //!
@@ -95,12 +96,16 @@ pub fn install(
             return Err(format!("download of {} is corrupt (checksum mismatch)", asset.name));
         }
         match format {
-            Format::Tarball => place_tarball(&dir, id, &part, cancel, progress),
+            Format::Tarball => place_archive(&dir, id, &part, format, cancel, progress),
             Format::AppImage => place_appimage(&dir, &asset.name, &part),
             #[cfg(target_os = "macos")]
             Format::Dmg => place_dmg(&dir, id, &part, cancel, progress),
             #[cfg(not(target_os = "macos"))]
             Format::Dmg => Err("disk images can only be installed on macOS".to_owned()),
+            #[cfg(windows)]
+            Format::Zip => place_archive(&dir, id, &part, format, cancel, progress),
+            #[cfg(not(windows))]
+            Format::Zip => Err("portable zips can only be installed on Windows".to_owned()),
         }
     })();
     let _ = fs::remove_file(&part);
@@ -274,10 +279,13 @@ fn place_appimage(dir: &Path, name: &str, part: &Path) -> Result<(String, String
     Ok((name.to_owned(), name.to_owned()))
 }
 
-fn place_tarball(
+/// Unpack a release tarball (or on Windows, a portable zip), check it holds the
+/// app's executable, and swap it into place.
+fn place_archive(
     dir: &Path,
     id: &str,
     part: &Path,
+    format: Format,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Stage, u64, u64),
 ) -> Result<(String, String), String> {
@@ -286,17 +294,39 @@ fn place_tarball(
     fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
 
     let result = (|| {
-        let top = unpack(part, &staging, cancel, progress)?;
+        let top = match format {
+            #[cfg(windows)]
+            Format::Zip => unpack_zip(part, &staging, cancel, progress)?,
+            _ => unpack(part, &staging, cancel, progress)?,
+        };
         let root = staging.join(&top);
-        let exe = [Path::new("bin").join(id), PathBuf::from(id)]
+        let exe_name = format!("{id}{}", std::env::consts::EXE_SUFFIX);
+        let exe = [Path::new("bin").join(&exe_name), PathBuf::from(&exe_name)]
             .into_iter()
             .find(|rel| crate::detect::is_executable(&root.join(rel)))
-            .ok_or_else(|| format!("the archive has no {id} executable"))?;
+            .ok_or_else(|| format!("the archive has no {exe_name} executable"))?;
+        #[cfg(windows)]
+        drop_portable_markers(root.join(&exe).parent().unwrap_or(&root), id);
         swap_into_place(dir, &root, &top)?;
         Ok((top.clone(), Path::new(&top).join(exe).to_string_lossy().into_owned()))
     })();
     remove_any(&staging);
     result
+}
+
+/// The apps' portable zips switch on portable mode with a marker file beside the
+/// executable, which keeps their settings in a folder next to it. An update
+/// replaces that whole folder, so the settings would be lost with it. The
+/// markers are removed instead, and the apps keep their settings in the user's
+/// profile, as they do when installed from their MSI.
+#[cfg(windows)]
+fn drop_portable_markers(exe_dir: &Path, id: &str) {
+    for name in ["portable.txt".to_owned(), format!("{id}.portable")] {
+        let path = exe_dir.join(name);
+        if path.is_file() {
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 /// Where a disk image is mounted while its app is copied out.
@@ -433,6 +463,95 @@ fn unpack(
         progress(Stage::Unpacking, count.get().min(total), total);
     }
     top.filter(|t| dest.join(t).is_dir()).ok_or_else(|| bad("no top-level folder"))
+}
+
+/// Unpack a Windows release zip into `dest`, by the same rules as [`unpack`]:
+/// every entry sits under one top-level folder and stays inside it. Only files
+/// and folders are accepted (no links), and no names that Windows treats
+/// specially. Returns the top-level folder name.
+#[cfg(windows)]
+fn unpack_zip(
+    archive: &Path,
+    dest: &Path,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<String, String> {
+    let file = File::open(archive).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(io::BufReader::new(file)).map_err(|e| format!("couldn't read the archive: {e}"))?;
+    let bad = |why: &str| format!("the archive looks unsafe ({why}), so it wasn't installed");
+    let total: u64 = (0..zip.len()).filter_map(|i| zip.by_index_raw(i).ok().map(|f| f.size())).sum();
+    let mut done = 0u64;
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut top: Option<String> = None;
+    for i in 0..zip.len() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(CANCELLED.to_owned());
+        }
+        let mut entry = zip.by_index(i).map_err(|e| format!("couldn't read the archive: {e}"))?;
+        let name = entry.name().map_err(|e| format!("couldn't read the archive: {e}"))?;
+        // Some zip tools write Windows separators.
+        let path = PathBuf::from(name.replace('\\', "/"));
+        if !is_plain_relative(&path) {
+            return Err(bad("an entry points outside its folder"));
+        }
+        if !path.components().all(|c| is_ordinary_windows_name(c.as_os_str())) {
+            return Err(bad("an entry has a name Windows reserves"));
+        }
+        let first = path.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned());
+        let first = first.ok_or_else(|| bad("an entry has no name"))?;
+        match &top {
+            None => top = Some(first),
+            Some(t) if t.eq_ignore_ascii_case(&first) => {}
+            Some(_) => return Err(bad("more than one top-level folder")),
+        }
+        if entry.is_symlink() {
+            return Err(bad("the archive contains a link"));
+        }
+
+        let out = dest.join(&path);
+        if entry.is_dir() {
+            fs::create_dir_all(&out).map_err(|e| format!("couldn't unpack {}: {e}", path.display()))?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("couldn't unpack {}: {e}", path.display()))?;
+        }
+        let mut file = File::create(&out).map_err(|e| format!("couldn't unpack {}: {e}", path.display()))?;
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(CANCELLED.to_owned());
+            }
+            let n = entry.read(&mut buf).map_err(|e| format!("couldn't unpack {}: {e}", path.display()))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n]).map_err(|e| format!("couldn't unpack {}: {e}", path.display()))?;
+            done += n as u64;
+            progress(Stage::Unpacking, done.min(total), total);
+        }
+    }
+    top.filter(|t| dest.join(t).is_dir()).ok_or_else(|| bad("no top-level folder"))
+}
+
+/// A file or folder name with no special meaning to Windows: no reserved
+/// characters (`a:b` would write a hidden stream), no trailing dot or space
+/// (Windows drops them, so `app.exe.` would be `app.exe`), and no device name
+/// such as `CON` or `nul.txt`.
+#[cfg(windows)]
+fn is_ordinary_windows_name(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else { return false };
+    if name.is_empty()
+        || name.ends_with(['.', ' '])
+        || name.chars().any(|c| c < ' ' || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+    {
+        return false;
+    }
+    let stem = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix)
+            .is_some_and(|n| n.chars().count() == 1 && n.chars().all(|c| c.is_ascii_digit() || "¹²³".contains(c)))
+    };
+    !(matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT"))
 }
 
 fn is_plain_relative(p: &Path) -> bool {
@@ -575,6 +694,92 @@ mod tests {
         assert!(!is_single_name(".."));
     }
 
+    #[cfg(windows)]
+    fn temp_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("landingcraft-test-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// A zip with these entries (a name ending in `/` is a folder).
+    #[cfg(windows)]
+    fn make_zip(path: &Path, entries: &[&str]) {
+        let mut w = zip::ZipWriter::new(File::create(path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for name in entries {
+            if name.ends_with('/') {
+                w.add_directory(*name, opts).unwrap();
+            } else {
+                w.start_file(*name, opts).unwrap();
+                w.write_all(format!("contents of {name}").repeat(100).as_bytes()).unwrap();
+            }
+        }
+        w.finish().unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn portable_zips_unpack_without_their_portable_marker() {
+        let dir = temp_dir("zip-ok");
+        let part = dir.join(format!("{TMP}download.part"));
+        let top = "x-1.0.0-windows-x64-portable";
+        make_zip(
+            &part,
+            &[
+                &format!("{top}/"),
+                &format!("{top}/x.exe"),
+                &format!("{top}/README.md"),
+                &format!("{top}/portable.txt"),
+                &format!("{top}/X.portable"),
+                &format!("{top}/data/fonts/a.ttf"),
+            ],
+        );
+        let (payload, exe) =
+            place_archive(&dir, "x", &part, Format::Zip, &AtomicBool::new(false), &mut |_, _, _| {}).unwrap();
+        assert_eq!(payload, top);
+        assert_eq!(Path::new(&exe), Path::new(top).join("x.exe"));
+        let root = dir.join(top);
+        assert!(crate::detect::is_executable(&root.join("x.exe")));
+        assert!(root.join("README.md").is_file() && root.join("data/fonts/a.ttf").is_file());
+        assert!(!root.join("portable.txt").exists() && !root.join("X.portable").exists());
+        assert!(!dir.join(format!("{TMP}staging")).exists(), "staging is cleaned up");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn unsafe_zips_are_refused() {
+        let dir = temp_dir("zip-bad");
+        let part = dir.join("bad.zip");
+        let cases: &[&[&str]] = &[
+            &["a/x.exe", "../evil.exe"],
+            &["a/x.exe", "a/../../evil.exe"],
+            &["a/x.exe", "C:/evil.exe"],
+            &["a/x.exe", "/evil.exe"],
+            &["a/x.exe", "b/y.exe"],
+            &["a/x.exe", "a/x.exe:hidden"],
+            &["a/x.exe", "a/CON"],
+            &["a/x.exe", "a/nul.txt"],
+            &["a/x.exe", "a/com1.dll"],
+            &["a/x.exe", "a/x.exe."],
+            &["a\\x.exe", "a\\..\\..\\evil.exe"],
+        ];
+        for entries in cases {
+            make_zip(&part, entries);
+            let staging = dir.join("staging");
+            fs::create_dir_all(&staging).unwrap();
+            let r = unpack_zip(&part, &staging, &AtomicBool::new(false), &mut |_, _, _| {});
+            assert!(r.as_ref().is_err_and(|e| e.contains("unsafe")), "{entries:?} gave {r:?}");
+            assert!(!dir.join("evil.exe").exists() && !Path::new("C:/evil.exe").exists());
+            let _ = fs::remove_dir_all(&staging);
+        }
+        assert!(is_ordinary_windows_name("console.exe".as_ref()));
+        assert!(is_ordinary_windows_name("com10.txt".as_ref()));
+        assert!(!is_ordinary_windows_name("COM¹".as_ref()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     /// Full round trip against GitHub (~120 MB of downloads):
     /// `LC_TEST_DIR=/tmp/x cargo test -- --ignored --nocapture`
     #[test]
@@ -596,9 +801,9 @@ mod tests {
             }
         };
 
-        let first = releases::latest_compatible(id, &cached.releases, Format::Tarball).expect("compatible release");
+        let first = releases::latest_compatible(id, &cached.releases, Format::default()).expect("compatible release");
         let cancelled = AtomicBool::new(true);
-        let r = install(&a, id, first.release, first.asset, Format::Tarball, &cancelled, &mut |_, _, _| {});
+        let r = install(&a, id, first.release, first.asset, first.format, &cancelled, &mut |_, _, _| {});
         assert_eq!(r.unwrap_err(), CANCELLED);
         assert!(!a.join(id).exists(), "a cancelled first install leaves no folder");
 

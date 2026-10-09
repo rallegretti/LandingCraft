@@ -5,13 +5,18 @@ use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use crate::settings::home;
 
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
 /// A file with an execute bit. On macOS, an `.app` bundle with a findable
-/// executable counts too.
+/// executable counts too. On Windows, an `.exe` file.
 pub fn is_executable(path: &Path) -> bool {
     #[cfg(target_os = "macos")]
     if crate::macos::is_bundle(path) {
@@ -19,9 +24,17 @@ pub fn is_executable(path: &Path) -> bool {
     }
     #[cfg(unix)]
     let runnable = |m: &std::fs::Metadata| m.permissions().mode() & 0o111 != 0;
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    let runnable = |_: &std::fs::Metadata| path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"));
+    #[cfg(not(any(unix, windows)))]
     let runnable = |_: &std::fs::Metadata| true;
     path.metadata().map(|m| m.is_file() && runnable(&m)).unwrap_or(false)
+}
+
+/// The file name of an app's executable: `<id>`, or `<id>.exe` on Windows.
+#[cfg(not(target_os = "macos"))]
+fn exe_name(id: &str) -> String {
+    format!("{id}{}", std::env::consts::EXE_SUFFIX)
 }
 
 /// macOS: look for `<id>.app` (any case) in `/Applications` and `~/Applications`.
@@ -39,7 +52,7 @@ pub fn find(id: &str) -> Option<PathBuf> {
 }
 
 /// Directories that might contain an AppImage or an unpacked release.
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 fn extra_dirs() -> Vec<PathBuf> {
     let h = home();
     let mut dirs: Vec<PathBuf> = [".local/bin", ".cargo/bin", "Applications", "AppImages", "Downloads", "bin"]
@@ -50,9 +63,28 @@ fn extra_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Directories that might contain an app installed from its MSI (Program Files)
+/// or an unzipped portable release.
+#[cfg(windows)]
+fn extra_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"]
+        .iter()
+        .filter_map(|v| std::env::var_os(v).map(PathBuf::from))
+        .collect();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(local).join("Programs"));
+    }
+    let h = home();
+    dirs.extend(["Downloads", "Desktop", "Apps", "bin", ".cargo/bin"].iter().map(|sub| h.join(sub)));
+    dirs.dedup();
+    dirs
+}
+
 /// Look for an app installed by other means. Order: `$PATH`, well-known user
 /// directories, `/opt/<id>/`, then `<id>-*.AppImage` files or unpacked
-/// `<id>-*` release folders in the same directories.
+/// `<id>-*` release folders in the same directories. On Windows the well-known
+/// places are Program Files (`<App>\<id>.exe`, where the MSI puts it) and the
+/// user's Downloads, Desktop and Apps folders, and the executable is `<id>.exe`.
 #[cfg(not(target_os = "macos"))]
 pub fn find(id: &str) -> Option<PathBuf> {
     let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
@@ -61,8 +93,9 @@ pub fn find(id: &str) -> Option<PathBuf> {
 
     let dirs: Vec<PathBuf> = path_dirs.into_iter().chain(extra_dirs()).collect();
 
+    let exe = exe_name(id);
     for dir in &dirs {
-        for candidate in [dir.join(id), dir.join(id).join(id), dir.join(id).join("bin").join(id)] {
+        for candidate in [dir.join(&exe), dir.join(id).join(&exe), dir.join(id).join("bin").join(&exe)] {
             if is_executable(&candidate) {
                 return Some(candidate);
             }
@@ -80,8 +113,9 @@ pub fn find(id: &str) -> Option<PathBuf> {
                 continue;
             }
             let path = entry.path();
-            let exe = if path.is_dir() {
-                [path.join(id), path.join("bin").join(id)]
+            let found = if path.is_dir() {
+                // Explorer's "Extract all" nests the zip's folder in one of the same name.
+                [path.join(&exe), path.join("bin").join(&exe), path.join(entry.file_name()).join(&exe)]
                     .into_iter()
                     .find(|p| is_executable(p))
             } else if name.ends_with(".appimage") && is_executable(&path) {
@@ -89,13 +123,13 @@ pub fn find(id: &str) -> Option<PathBuf> {
             } else {
                 None
             };
-            let Some(exe) = exe else { continue };
+            let Some(found) = found else { continue };
             let modified = entry
                 .metadata()
                 .and_then(|m| m.modified())
                 .unwrap_or(std::time::UNIX_EPOCH);
             if best.as_ref().is_none_or(|(t, _)| modified > *t) {
-                best = Some((modified, exe));
+                best = Some((modified, found));
             }
         }
     }
@@ -136,6 +170,9 @@ impl Processes {
         // Own process group, so closing the launcher doesn't take the app down with it.
         #[cfg(unix)]
         cmd.process_group(0);
+        // Likewise on Windows, where a console's Ctrl+C would otherwise reach it too.
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
         #[cfg(all(unix, not(target_os = "macos")))]
         {
             let is_appimage = exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
