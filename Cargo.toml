@@ -3,6 +3,7 @@ name = "landingcraft"
 version = "0.1.0"
 edition = "2024"
 description = "A native launcher for the ArtCraft Crafting Apps"
+license = "CC0-1.0"
 
 [dependencies]
 # egui on winit, rendered through wgpu. Default features are off so that no

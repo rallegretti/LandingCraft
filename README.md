@@ -25,6 +25,7 @@
 - [Built in Rust](#built-in-rust)
 - [Development](#development)
 - [Credits](#credits)
+- [License](#license)
 
 ## The apps
 
@@ -228,3 +229,15 @@ LANDINGCRAFT_SCREENSHOT=out.png LANDINGCRAFT_DEMO=menu:vectorcraft target/debug/
 - **Fonts:** [Space Grotesk](https://github.com/floriankarsten/space-grotesk) and
   [IBM Plex](https://github.com/IBM/plex), both under the SIL Open Font License 1.1
   (see [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt)).
+
+## License
+
+LandingCraft's own code and files are dedicated to the public domain under
+[CC0 1.0 Universal](LICENSE). You can copy, modify and distribute them, even commercially, without
+asking permission.
+
+That dedication doesn't cover material by others included in this repository:
+
+- **The Crafting Apps' names, descriptions and icons** (`assets/icons/`, and as they appear in
+  `docs/screenshots/`) belong to the ArtCraft team.
+- **The bundled fonts** (`assets/fonts/`) remain under the SIL Open Font License 1.1.
