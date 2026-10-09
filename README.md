@@ -2,8 +2,8 @@
 
 A native desktop launcher for the seven [ArtCraft Crafting Apps](https://getartcraft.com/apps):
 PhotoCraft, VectorCraft, FilmCraft, LightCraft, PdfCraft, EffectCraft and DesignCraft.
-It works like a small Creative Cloud–style hub. Browse the apps, see which are installed, open them,
-or jump to their releases, website and source.
+It works like a small Creative Cloud–style hub. It installs the latest stable release of each app,
+keeps them up to date, opens them and uninstalls them, all from one place.
 
 ## Build and run
 
@@ -22,20 +22,56 @@ with the same options as the last `build.sh`. It also accepts `--gpu NAME`, `--l
 
 You need a Vulkan driver for at least one GPU. Nothing else is required at build time. No C/C++ code is
 compiled, and the binary links only against libc. At runtime it loads the system Vulkan loader and
-Wayland or X11 libraries.
+Wayland or X11 libraries. HTTPS uses rustls with the pure-Rust RustCrypto provider and your system's CA
+certificates.
 
 ## What it does
 
 - **Library**: cards for every app with its icon, category, tagline, release stage and version. Each
   app's accent colour is taken from its icon background and used throughout its card and page.
-- **App pages**: summary, six highlights, platform list, and Open / Get / Website / Source actions.
-- **Discovery**: finds installed apps on `$PATH`, in `~/.local/bin`, `~/.cargo/bin`, `~/Applications`,
-  `~/AppImages`, `~/Downloads`, `~/bin` and `/opt`. It accepts a binary named after the app, a
-  `<app>-*.AppImage`, or an unpacked `<app>-*/` release folder. You can also set an explicit
-  executable on each app's page. That setting is saved and takes priority over discovery.
-- **Launching**: starts the app detached in its own process group and shows it as *Running* until it exits.
-- **Links**: opens URLs through the XDG Desktop Portal over D-Bus (`zbus`) rather than by running
-  `xdg-open`. If no portal answers, the link is copied to the clipboard.
+- **Install, update, uninstall**: **Install** downloads the newest stable release that has a build for
+  this OS and CPU. **Update** appears when a newer one is published, and **Update all** handles every app
+  at once. The More (•••) menu on each card and page has Reinstall, Check for updates, Show in file
+  manager and Uninstall.
+- **Launching**: starts the app detached in its own process group and shows it as *Running* until it
+  exits. A running app can't be updated, uninstalled or moved.
+- **Other copies**: apps installed some other way are still found and can be opened. That covers `$PATH`,
+  `~/.local/bin`, `~/.cargo/bin`, `~/Applications`, `~/AppImages`, `~/Downloads`, `~/bin` and `/opt`.
+  You can also point an app at a specific executable under **Advanced** on its page. The launcher's own
+  copy always takes priority.
+- **Links and folders**: URLs open through the XDG Desktop Portal over D-Bus (`zbus`), not `xdg-open`.
+  The same goes for the folder picker. Folders open in the file manager via `org.freedesktop.FileManager1`.
+
+## Installations
+
+Apps live in **`~/.craftapps`** by default, one folder per app:
+
+```
+~/.craftapps/
+  photocraft/
+    craftapp.json                      # manifest: version, format, checksum, executable
+    photocraft-0.5.0-linux-x86_64/     # unpacked tarball (or a single .AppImage file)
+```
+
+- **Stable only.** A release qualifies only if GitHub doesn't mark it as a draft or pre-release *and* its
+  tag is a plain `X.Y.Z` version. The tag check matters because some release candidates
+  (`v0.1.1-rc.5`) were published without the pre-release flag. Tags with `-rc`, `-beta`, `-nightly`
+  or `+build` suffixes are always skipped.
+- **Verified.** Each download is checked against GitHub's SHA-256 digest for the asset, or the release's
+  `SHA256SUMS.txt` for older releases. Without a checksum, the launcher won't install the release.
+- **Safe replacement.** The new version is downloaded and unpacked next to the old one and swapped in
+  only once it's complete, so a failed or cancelled update leaves the working copy alone. Archives may
+  contain only files, folders and links that stay inside the app's folder.
+- **Settings → Installations** changes the folder with your desktop's folder picker, or you can type a
+  path. Installed apps move with it: renamed on the same drive, or copied then deleted across drives.
+  If any move fails, the apps already moved are put back.
+- **Settings → Package format** chooses between **Tarball** (default: unpacked folder, fastest start)
+  and **AppImage** (one file per app). It applies to new installs and updates, and **Reinstall** converts
+  an existing app. AppImages run with FUSE 2 when it's present, and otherwise by extracting first.
+
+Launcher settings live in `~/.config/landingcraft/settings.json`, and the release-list cache in
+`~/.cache/landingcraft/releases.json`. Updates are checked at startup and every six hours, and the
+automatic checks can be turned off.
 
 ## Graphics
 
@@ -54,10 +90,27 @@ LANDINGCRAFT_GPU=radv cargo run --release
 | Path | Purpose |
 | --- | --- |
 | `src/catalog.rs` | App data: names, summaries, highlights, accents, versions |
-| `src/app.rs` | The UI: sidebar, library grid, app pages, settings |
+| `src/app.rs` | Launcher state and actions (install, update, uninstall, move) |
+| `src/app/` | Pages and dialogs: library, app detail, settings, shared widgets |
+| `src/releases.rs` | GitHub release lookup over HTTPS, stable filtering, asset choice |
+| `src/installer.rs` | Download, verify, unpack, swap in, uninstall, move installs |
+| `src/settings.rs` | Install folder, package format and other persisted settings |
 | `src/theme.rs` | Colours, fonts and the custom-painted buttons, pills and glows |
-| `src/detect.rs` | Installed-app discovery and process launching |
+| `src/detect.rs` | Finding copies installed elsewhere, and process launching |
 | `src/gpu.rs` | Vulkan-only wgpu setup and adapter selection |
-| `src/links.rs` | Opening URLs via the desktop portal |
+| `src/portal.rs` | Desktop portal and file manager over D-Bus |
 | `assets/icons` | App icons from getartcraft.com |
 | `assets/fonts` | Space Grotesk and IBM Plex (SIL OFL 1.1, see `assets/fonts/OFL.txt`) |
+
+## Tests
+
+```bash
+cargo test
+```
+
+The end-to-end installer test downloads about 120 MB from GitHub. It installs PdfCraft as a tarball,
+switches it to an AppImage, moves it, then uninstalls it. Run it on request:
+
+```bash
+LC_TEST_DIR=/tmp/lc-test cargo test --release -- --ignored --nocapture
+```
