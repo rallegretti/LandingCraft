@@ -1,0 +1,21 @@
+[package]
+name = "landingcraft"
+version = "0.1.0"
+edition = "2024"
+description = "A native launcher for the ArtCraft Crafting Apps"
+
+[dependencies]
+# egui on winit, rendered through wgpu. Default features are off so that no
+# OpenGL/glow path is compiled in.
+eframe = { version = "0.36", default-features = false, features = ["wgpu_no_default_features", "wayland", "x11", "persistence"] }
+# Same wgpu that eframe uses, restricted to the Vulkan backend only.
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "vulkan", "wgsl"] }
+# Pure-Rust WebP decoding for the bundled app icons.
+image = { version = "0.25", default-features = false, features = ["webp"] }
+# Pure-Rust D-Bus, used to ask the desktop portal to open web links.
+zbus = "5"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+lto = "thin"
+strip = true
